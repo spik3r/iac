@@ -71,14 +71,15 @@ module "app_service" {
   
   docker_image            = var.docker_image
   docker_registry_url     = "https://${module.container_registry.login_server}"
-  docker_registry_username = module.container_registry.admin_username
-  docker_registry_password = module.container_registry.admin_password
+  docker_registry_username = null
+  docker_registry_password = null
   
-  subnet_id = module.networking.app_subnet_id
+  subnet_id               = module.networking.app_subnet_id
+  enable_vnet_integration = true
   
   app_settings = merge(var.app_settings, {
     ASPNETCORE_ENVIRONMENT = "Development"
-    WEBSITE_HTTPLOGGING_RETENTION_DAYS = "7"
+    PORT = "80"
   })
 
   always_on                 = var.app_service_always_on

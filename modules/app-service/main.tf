@@ -34,14 +34,9 @@ resource "azurerm_linux_web_app" "main" {
     }
   }
 
-  app_settings = merge(
-    var.app_settings,
-    var.docker_registry_username != null && var.docker_registry_password != null ? {
-      DOCKER_REGISTRY_SERVER_URL      = var.docker_registry_url
-      DOCKER_REGISTRY_SERVER_USERNAME = var.docker_registry_username
-      DOCKER_REGISTRY_SERVER_PASSWORD = var.docker_registry_password
-    } : {}
-  )
+
+
+  app_settings = var.app_settings
 
   identity {
     type = "SystemAssigned"
@@ -67,7 +62,7 @@ resource "azurerm_linux_web_app" "main" {
 }
 
 resource "azurerm_app_service_virtual_network_swift_connection" "main" {
-  count          = var.subnet_id != null ? 1 : 0
+  count          = var.enable_vnet_integration ? 1 : 0
   app_service_id = azurerm_linux_web_app.main.id
   subnet_id      = var.subnet_id
 }

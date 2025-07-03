@@ -1,9 +1,59 @@
 # Vibes Infrastructure as Code
 
-A comprehensive Terraform project for deploying a .NET 8 web application to Azure App Service with multiple environments (dev/prod), using Azure remote state with the bootstrap pattern.
+This repository contains the Terraform infrastructure code for the Vibes application, including Azure App Service, Container Registry, and networking components.
+
+## Prerequisites
+
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
+- [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+- [Docker](https://docs.docker.com/get-docker/)
+- Azure subscription with appropriate permissions
+
+## Quick Start
+
+1. **Login to Azure**
+   ```bash
+   az login
+   ```
+
+2. **Bootstrap the remote state infrastructure**
+   ```bash
+   make bootstrap
+   ```
+
+3. **Deploy to development environment**
+   ```bash
+   make apply-dev
+   ```
+
+## Docker Commands
+
+### Build and Push Application Image
+
+```bash
+# Build the Docker image for Linux/AMD64 platform
+cd app-src
+docker build -t vibesacrdev/vibes-app:latest . --platform=linux/amd64
+
+# Push to Azure Container Registry
+docker push vibesacrdev.azurecr.io/vibes-app:latest
+
+# Alternative: Use Azure CLI to build and push directly
+az acr build --registry vibesacrdev --image vibesapp:latest .
+```
 
 ## Project Structure
 
+```
+├── bootstrap/          # Remote state infrastructure
+├── environments/       # Environment-specific configurations
+│   ├── dev/           # Development environment
+│   └── prod/          # Production environment
+├── modules/           # Reusable Terraform modules
+│   ├── app-service/   # Azure App Service module
+│   ├── container-registry/ # Azure Container Registry module
+│   └── networking/    # Virtual network and security groups
+└── app-src/          # Application source code and Dockerfile
 ```
 ├── bootstrap/              # Bootstrap infrastructure for Terraform state
 ├── environments/
@@ -164,45 +214,52 @@ terraform output app_service_url
 
 ## Building and Deploying Custom Application
 
-### Option 1: Using the Sample Application
+### Building and Deploying the Sample Application
 
 The project includes a sample .NET 8 web API in the `app-src/` directory.
+
+**Step 1: Build and push the Docker image**
 
 ```bash
 # Navigate to app source
 cd app-src
 
-# Build and test locally
+# Build and test locally (optional)
 dotnet build
 dotnet run
 
 # Build Docker image
 docker build -t vibes-app:latest .
 
-# Tag for ACR (replace with your ACR name from terraform output)
-docker tag vibes-app:latest [your-acr-name].azurecr.io/vibes-app:latest
+# Get your ACR name from terraform output
+cd ../environments/dev
+ACR_NAME=$(terraform output -raw container_registry_name)
 
 # Login to ACR
-az acr login --name [your-acr-name]
+az acr login --name $ACR_NAME
 
-# Push to ACR
-docker push [your-acr-name].azurecr.io/vibes-app:latest
+# Tag and push to ACR
+docker tag vibes-app:latest $ACR_NAME.azurecr.io/vibes-app:latest
+docker push $ACR_NAME.azurecr.io/vibes-app:latest
 ```
 
-### Option 2: Update Terraform to Use Custom Image
+**Step 2: Deploy with Terraform**
 
-Update the `docker_image` variable in your environment's `terraform.tfvars`:
+The `docker_image` variable in your environment's `terraform.tfvars` should only contain the image name and tag:
 
 ```hcl
-docker_image = "[your-acr-name].azurecr.io/vibes-app:latest"
+docker_image = "vibes-app:latest"
 ```
 
-Then apply the changes:
+The ACR registry URL is automatically constructed by the Terraform configuration.
 
 ```bash
+# Apply the infrastructure changes
 terraform plan
 terraform apply
 ```
+
+**Important:** You must push the Docker image to ACR before the App Service can successfully start.
 
 ## Common Operations
 
@@ -266,6 +323,7 @@ terraform destroy -var-file="terraform.tfvars"
 | Admin User | Enabled | Disabled |
 | Logging Level | Information | Warning |
 | VNet Address | 10.0.0.0/16 | 10.1.0.0/16 |
+| Location | Australia East | Australia East |
 
 ## Security Considerations
 

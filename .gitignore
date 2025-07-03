@@ -46,3 +46,10 @@ Thumbs.db
 app-src/bin/
 app-src/obj/
 app-src/publish/
+
+# Debugging and archive files
+*.zip
+app-logs*.zip
+final-test.zip
+working-test.zip
+LogFiles/

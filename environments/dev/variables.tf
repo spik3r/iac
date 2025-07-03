@@ -7,7 +7,7 @@ variable "project_name" {
 variable "location" {
   description = "Azure region for resources"
   type        = string
-  default     = "East US"
+  default     = "Australia East"
 }
 
 variable "vnet_address_space" {
@@ -53,9 +53,9 @@ variable "app_service_always_on" {
 }
 
 variable "docker_image" {
-  description = "Docker image for the web app"
+  description = "Docker image name and tag (without registry URL)"
   type        = string
-  default     = "mcr.microsoft.com/dotnet/samples:aspnetapp"
+  default     = "vibes-app:latest"
 }
 
 variable "app_settings" {

@@ -1,5 +1,9 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure for Azure App Service
+var port = Environment.GetEnvironmentVariable("PORT") ?? "80";
+builder.WebHost.UseUrls($"http://*:{port}");
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -14,7 +18,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Don't use HTTPS redirection in Azure App Service containers
+// app.UseHttpsRedirection();
+
 app.UseAuthorization();
 app.MapControllers();
 
@@ -25,7 +31,8 @@ app.MapGet("/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNo
 app.MapGet("/", () => new { 
     Message = "Welcome to Vibes .NET 8 Web API", 
     Environment = app.Environment.EnvironmentName,
-    Version = "1.0.0"
+    Version = "1.0.0",
+    Port = Environment.GetEnvironmentVariable("PORT") ?? "80"
 });
 
 app.Run();

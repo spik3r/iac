@@ -20,7 +20,7 @@ variable "sku_name" {
 }
 
 variable "docker_image" {
-  description = "Docker image for the web app"
+  description = "Docker image name and tag (without registry URL)"
   type        = string
 }
 
@@ -60,6 +60,12 @@ variable "subnet_id" {
   description = "Subnet ID for VNet integration"
   type        = string
   default     = null
+}
+
+variable "enable_vnet_integration" {
+  description = "Enable VNet integration for the App Service"
+  type        = bool
+  default     = false
 }
 
 variable "ip_restrictions" {
