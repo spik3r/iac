@@ -37,7 +37,7 @@ devops_service_principal_key = ""  # Set in secrets.tfvars
 
 # DevOps Settings
 devops_min_reviewers = 1
-devops_create_pipelines = false  # Set to true after pushing YAML files to repository
+devops_create_pipelines = true  # YAML files now exist in GitHub repository
 
 # GitHub Integration (Optional - use your existing GitHub repo)
 devops_use_github_repo = true
