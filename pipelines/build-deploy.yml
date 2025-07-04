@@ -63,28 +63,25 @@ stages:
           Write-Host "##vso[task.setvariable variable=shortVersion]$($newVersion -replace '^v', '')"
           Write-Host "Generated version: $newVersion"
     
-    - task: Docker@2
-      displayName: 'Build Docker Image'
+    - task: AzureCLI@2
+      displayName: 'Build and Push Docker Image'
       inputs:
-        containerRegistry: '$(SERVICE_CONNECTION_NAME)'
-        repository: '$(DOCKER_IMAGE_NAME)'
-        command: 'build'
-        Dockerfile: 'app-src/Dockerfile'
-        buildContext: 'app-src'
-        tags: |
-          $(semanticVersion)
-          latest
-        arguments: '--platform=linux/amd64'
-    
-    - task: Docker@2
-      displayName: 'Push Docker Image'
-      inputs:
-        containerRegistry: '$(SERVICE_CONNECTION_NAME)'
-        repository: '$(DOCKER_IMAGE_NAME)'
-        command: 'push'
-        tags: |
-          $(semanticVersion)
-          latest
+        azureSubscription: '$(SERVICE_CONNECTION_NAME)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Login to ACR
+          az acr login --name $(CONTAINER_REGISTRY_NAME)
+          
+          # Build image
+          docker build --platform=linux/amd64 \
+            -t $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):$(semanticVersion) \
+            -t $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):latest \
+            app-src/
+          
+          # Push images
+          docker push $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):$(semanticVersion)
+          docker push $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):latest
     
     - task: PowerShell@2
       displayName: 'Create Git Tag'
