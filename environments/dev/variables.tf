@@ -63,3 +63,74 @@ variable "app_settings" {
   type        = map(string)
   default     = {}
 }
+
+# Azure DevOps Variables
+variable "enable_devops_pipeline" {
+  description = "Enable Azure DevOps pipeline creation"
+  type        = bool
+  default     = false
+}
+
+variable "azuredevops_org_service_url" {
+  description = "Azure DevOps organization service URL (e.g., https://dev.azure.com/yourorg)"
+  type        = string
+  default     = ""
+}
+
+variable "azuredevops_personal_access_token" {
+  description = "Azure DevOps Personal Access Token"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "azure_subscription_name" {
+  description = "Name of the Azure subscription"
+  type        = string
+  default     = ""
+}
+
+variable "devops_service_principal_id" {
+  description = "Service Principal ID for Azure DevOps service connection"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "devops_service_principal_key" {
+  description = "Service Principal key for Azure DevOps service connection"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "devops_min_reviewers" {
+  description = "Minimum number of reviewers required for pull requests"
+  type        = number
+  default     = 1
+}
+
+variable "devops_create_pipelines" {
+  description = "Whether to create build pipelines (set to true after pushing YAML files)"
+  type        = bool
+  default     = false
+}
+
+variable "devops_use_github_repo" {
+  description = "Use GitHub repository instead of Azure DevOps Git"
+  type        = bool
+  default     = false
+}
+
+variable "github_repo_name" {
+  description = "GitHub repository name (e.g., 'spik3r/iac')"
+  type        = string
+  default     = ""
+}
+
+variable "github_personal_access_token" {
+  description = "GitHub Personal Access Token for service connection"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

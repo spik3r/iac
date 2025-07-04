@@ -1,0 +1,39 @@
+# Project Configuration
+project_name = "vibes"
+location     = "Australia East"
+
+# Networking Configuration
+vnet_address_space         = "10.0.0.0/16"
+app_subnet_address_prefix  = "10.0.1.0/24"
+pe_subnet_address_prefix   = "10.0.2.0/24"
+
+# Container Registry Configuration
+acr_sku           = "Basic"
+acr_admin_enabled = true
+
+# App Service Configuration
+app_service_sku       = "B1"
+app_service_always_on = false
+docker_image          = "vibes-app:latest"
+
+# Additional App Settings
+app_settings = {
+  "CUSTOM_SETTING" = "value"
+}
+
+# Azure DevOps Configuration (Optional)
+# Set enable_devops_pipeline = true to create Azure DevOps resources
+enable_devops_pipeline = false
+
+# Required if enable_devops_pipeline = true
+azuredevops_org_service_url       = "https://dev.azure.com/yourorganization"
+azuredevops_personal_access_token = "your-pat-token-here"
+azure_subscription_name           = "Your Azure Subscription Name"
+
+# Service Principal for Azure DevOps Service Connection
+# Create a service principal with Contributor access to your subscription
+devops_service_principal_id  = "your-service-principal-app-id"
+devops_service_principal_key = "your-service-principal-secret"
+
+# DevOps Settings
+devops_min_reviewers = 1

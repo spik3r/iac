@@ -31,15 +31,73 @@ This repository contains the Terraform infrastructure code for the Vibes applica
 ### Build and Push Application Image
 
 ```bash
-# Build the Docker image for Linux/AMD64 platform
+# Build the Docker image for Linux/AMD64 platform with semantic versioning
 cd app-src
+docker build -t vibesacrdev/vibes-app:v1.0.0 . --platform=linux/amd64
 docker build -t vibesacrdev/vibes-app:latest . --platform=linux/amd64
 
 # Push to Azure Container Registry
+docker push vibesacrdev.azurecr.io/vibes-app:v1.0.0
 docker push vibesacrdev.azurecr.io/vibes-app:latest
 
 # Alternative: Use Azure CLI to build and push directly
-az acr build --registry vibesacrdev --image vibesapp:latest .
+az acr build --registry vibesacrdev --image vibes-app:v1.0.0 .
+az acr build --registry vibesacrdev --image vibes-app:latest .
+```
+
+## DevOps Pipelines
+
+This project includes Azure DevOps pipelines for automated CI/CD with semantic versioning:
+
+### Pipeline Features
+
+1. **Build & Deploy Pipeline** (`pipelines/build-deploy.yml`):
+   - Automatic semantic versioning (v1.2.3 format)
+   - Docker image build and push to ACR
+   - Automated deployment to dev environment
+   - Optional promotion to production
+   - Health checks after deployment
+
+2. **Rollback Pipeline** (`pipelines/rollback.yml`):
+   - Deploy any previous semantic version
+   - Safety confirmations required
+   - Verification that target image exists in ACR
+   - Post-rollback health checks
+
+### Semantic Versioning Strategy
+
+- **Format**: `v{major}.{minor}.{patch}` (e.g., `v1.2.3`)
+- **Auto-increment**: Patch version increments automatically on main branch commits
+- **Manual versioning**: Create Git tags for major/minor version bumps
+- **Latest tag**: Always points to the most recent stable release
+
+### Using the DevOps Module
+
+Add the DevOps pipeline module to your environment:
+
+```hcl
+module "devops_pipeline" {
+  source = "../../modules/devops-pipeline"
+  
+  project_name             = var.project_name
+  environment             = var.environment
+  location                = var.location
+  tags                    = local.common_tags
+  
+  subscription_id         = data.azurerm_client_config.current.subscription_id
+  subscription_name       = "Your Subscription Name"
+  tenant_id              = data.azurerm_client_config.current.tenant_id
+  
+  service_principal_id    = var.devops_service_principal_id
+  service_principal_key   = var.devops_service_principal_key
+  
+  resource_group_name     = module.app_service.resource_group_name
+  container_registry_name = module.container_registry.name
+  app_service_name        = module.app_service.name
+  
+  acr_admin_username      = module.container_registry.admin_username
+  acr_admin_password      = module.container_registry.admin_password
+}
 ```
 
 ## Project Structure

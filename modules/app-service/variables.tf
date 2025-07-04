@@ -20,8 +20,14 @@ variable "sku_name" {
 }
 
 variable "docker_image" {
-  description = "Docker image name and tag (without registry URL)"
+  description = "Docker image name and tag (without registry URL). Use semantic versioning (e.g., vibes-app:v1.2.3) or 'latest'"
   type        = string
+  default     = "vibes-app:latest"
+  
+  validation {
+    condition = can(regex("^[a-zA-Z0-9][a-zA-Z0-9._-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$", var.docker_image))
+    error_message = "Docker image must be in format 'name:tag' (e.g., 'vibes-app:v1.2.3' or 'vibes-app:latest')."
+  }
 }
 
 variable "docker_registry_url" {

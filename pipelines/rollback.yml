@@ -1,0 +1,229 @@
+parameters:
+- name: targetVersion
+  displayName: 'Target Version to Deploy'
+  type: string
+  default: ''
+- name: environment
+  displayName: 'Target Environment'
+  type: string
+  default: 'dev'
+  values:
+  - dev
+  - prod
+- name: confirmRollback
+  displayName: 'Confirm Rollback (type "ROLLBACK" to confirm)'
+  type: string
+  default: ''
+
+variables:
+  - group: vibes-dev-variables
+  - group: vibes-dev-secrets
+  - name: vmImageName
+    value: 'ubuntu-latest'
+
+stages:
+- stage: ValidateRollback
+  displayName: 'Validate Rollback Request'
+  jobs:
+  - job: Validate
+    displayName: 'Validate Rollback Parameters'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - task: PowerShell@2
+      displayName: 'Validate Parameters'
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Validate confirmation
+          if ("${{ parameters.confirmRollback }}" -ne "ROLLBACK") {
+            Write-Host "##vso[task.logissue type=error]Rollback not confirmed. Please type 'ROLLBACK' in the confirmRollback parameter."
+            exit 1
+          }
+          
+          # Validate target version format
+          $targetVersion = "${{ parameters.targetVersion }}"
+          if (-not $targetVersion) {
+            Write-Host "##vso[task.logissue type=error]Target version is required."
+            exit 1
+          }
+          
+          if ($targetVersion -notmatch '^v?\d+\.\d+\.\d+$') {
+            Write-Host "##vso[task.logissue type=error]Invalid version format. Use semantic versioning (e.g., v1.2.3 or 1.2.3)."
+            exit 1
+          }
+          
+          # Normalize version (ensure it starts with 'v')
+          if (-not $targetVersion.StartsWith('v')) {
+            $targetVersion = "v$targetVersion"
+          }
+          
+          Write-Host "##vso[task.setvariable variable=normalizedVersion;isOutput=true]$targetVersion"
+          Write-Host "Validated rollback to version: $targetVersion"
+          Write-Host "Target environment: ${{ parameters.environment }}"
+      name: validation
+    
+    - task: AzureCLI@2
+      displayName: 'Verify Image Exists in ACR'
+      inputs:
+        azureSubscription: '$(SERVICE_CONNECTION_NAME)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Check if the target image exists in ACR
+          TARGET_VERSION=$(echo "${{ parameters.targetVersion }}" | sed 's/^v//')
+          
+          echo "Checking if image exists: $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):v$TARGET_VERSION"
+          
+          # List all tags for the repository
+          AVAILABLE_TAGS=$(az acr repository show-tags \
+            --name $(CONTAINER_REGISTRY_NAME) \
+            --repository $(DOCKER_IMAGE_NAME) \
+            --output tsv)
+          
+          echo "Available tags:"
+          echo "$AVAILABLE_TAGS"
+          
+          # Check if target version exists
+          if echo "$AVAILABLE_TAGS" | grep -q "^v$TARGET_VERSION$"; then
+            echo "✅ Target image v$TARGET_VERSION found in ACR"
+          else
+            echo "❌ Target image v$TARGET_VERSION not found in ACR"
+            echo "Available versions:"
+            echo "$AVAILABLE_TAGS" | grep '^v[0-9]' | sort -V
+            exit 1
+          fi
+
+- stage: Rollback
+  displayName: 'Execute Rollback'
+  dependsOn: ValidateRollback
+  jobs:
+  - deployment: ExecuteRollback
+    displayName: 'Rollback to Previous Version'
+    pool:
+      vmImage: $(vmImageName)
+    environment: '${{ parameters.environment }}'
+    variables:
+      normalizedVersion: $[ stageDependencies.ValidateRollback.Validate.outputs['validation.normalizedVersion'] ]
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: PowerShell@2
+            displayName: 'Get Current Version'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Rolling back to version: $(normalizedVersion)"
+                Write-Host "Target environment: ${{ parameters.environment }}"
+          
+          - task: AzureCLI@2
+            displayName: 'Rollback App Service'
+            inputs:
+              azureSubscription: '$(SERVICE_CONNECTION_NAME)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                # Determine app service and resource group names based on environment
+                if [ "${{ parameters.environment }}" = "prod" ]; then
+                  APP_NAME=$(echo $(APP_SERVICE_NAME) | sed 's/-dev/-prod/')
+                  RG_NAME=$(echo $(RESOURCE_GROUP_NAME) | sed 's/-dev/-prod/')
+                else
+                  APP_NAME=$(APP_SERVICE_NAME)
+                  RG_NAME=$(RESOURCE_GROUP_NAME)
+                fi
+                
+                echo "Rolling back App Service: $APP_NAME"
+                echo "Resource Group: $RG_NAME"
+                echo "Target Image: $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):$(normalizedVersion)"
+                
+                # Get current image for rollback record
+                CURRENT_IMAGE=$(az webapp config show \
+                  --name $APP_NAME \
+                  --resource-group $RG_NAME \
+                  --query "linuxFxVersion" \
+                  --output tsv | cut -d'|' -f2)
+                
+                echo "Current image: $CURRENT_IMAGE"
+                
+                # Update App Service to use the target version
+                az webapp config container set \
+                  --name $APP_NAME \
+                  --resource-group $RG_NAME \
+                  --docker-custom-image-name $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):$(normalizedVersion)
+                
+                # Restart the app service
+                echo "Restarting App Service..."
+                az webapp restart \
+                  --name $APP_NAME \
+                  --resource-group $RG_NAME
+                
+                echo "✅ Rollback completed successfully"
+                echo "Previous image: $CURRENT_IMAGE"
+                echo "New image: $(CONTAINER_REGISTRY_NAME).azurecr.io/$(DOCKER_IMAGE_NAME):$(normalizedVersion)"
+          
+          - task: PowerShell@2
+            displayName: 'Post-Rollback Health Check'
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Determine app URL based on environment
+                if ("${{ parameters.environment }}" -eq "prod") {
+                  $appName = "$(APP_SERVICE_NAME)" -replace "-dev", "-prod"
+                } else {
+                  $appName = "$(APP_SERVICE_NAME)"
+                }
+                
+                $appUrl = "https://$appName.azurewebsites.net/health"
+                $maxAttempts = 15
+                $attempt = 1
+                
+                Write-Host "Starting health check for rollback verification..."
+                Write-Host "App URL: $appUrl"
+                
+                do {
+                  try {
+                    Write-Host "Health check attempt $attempt of $maxAttempts..."
+                    $response = Invoke-RestMethod -Uri $appUrl -Method Get -TimeoutSec 30
+                    
+                    if ($response.Status -eq "Healthy") {
+                      Write-Host "✅ Rollback successful! Application is healthy."
+                      Write-Host "Version info from health endpoint:"
+                      Write-Host ($response | ConvertTo-Json -Depth 3)
+                      exit 0
+                    }
+                  } catch {
+                    Write-Host "❌ Health check failed: $($_.Exception.Message)"
+                  }
+                  
+                  if ($attempt -lt $maxAttempts) {
+                    Write-Host "Waiting 30 seconds before next attempt..."
+                    Start-Sleep -Seconds 30
+                  }
+                  $attempt++
+                } while ($attempt -le $maxAttempts)
+                
+                Write-Host "❌ Rollback verification failed - application not responding after $maxAttempts attempts"
+                Write-Host "Manual intervention may be required."
+                exit 1
+          
+          - task: PowerShell@2
+            displayName: 'Log Rollback Event'
+            condition: always()
+            inputs:
+              targetType: 'inline'
+              script: |
+                $status = if ($env:AGENT_JOBSTATUS -eq "Succeeded") { "SUCCESS" } else { "FAILED" }
+                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+                
+                Write-Host "=== ROLLBACK EVENT LOG ==="
+                Write-Host "Timestamp: $timestamp"
+                Write-Host "Environment: ${{ parameters.environment }}"
+                Write-Host "Target Version: $(normalizedVersion)"
+                Write-Host "Status: $status"
+                Write-Host "Initiated By: $(Build.RequestedFor)"
+                Write-Host "Build ID: $(Build.BuildId)"
+                Write-Host "=========================="
+                
+                # This could be extended to write to a logging system or database
