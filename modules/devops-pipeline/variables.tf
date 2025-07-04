@@ -102,12 +102,6 @@ variable "github_repo_name" {
   default     = ""
 }
 
-variable "github_repo_id" {
-  description = "GitHub repository ID (can be same as repo_name for most cases)"
-  type        = string
-  default     = ""
-}
-
 variable "github_personal_access_token" {
   description = "GitHub Personal Access Token for service connection"
   type        = string

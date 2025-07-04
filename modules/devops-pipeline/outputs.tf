@@ -10,7 +10,7 @@ output "devops_project_name" {
 
 output "git_repository_id" {
   description = "ID of the Git repository"
-  value       = var.use_github_repo ? var.github_repo_id : (length(azuredevops_git_repository.main) > 0 ? azuredevops_git_repository.main[0].id : null)
+  value       = var.use_github_repo ? var.github_repo_name : (length(azuredevops_git_repository.main) > 0 ? azuredevops_git_repository.main[0].id : null)
 }
 
 output "git_repository_url" {

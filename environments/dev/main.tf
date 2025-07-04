@@ -138,6 +138,5 @@ module "devops_pipeline" {
   # GitHub Integration
   use_github_repo              = var.devops_use_github_repo
   github_repo_name             = var.github_repo_name
-  github_repo_id               = var.github_repo_name  # For most cases, repo_id can be same as repo_name
   github_personal_access_token = var.github_personal_access_token
 }

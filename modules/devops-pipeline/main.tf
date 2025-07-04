@@ -143,12 +143,11 @@ resource "azuredevops_build_definition" "build_deploy" {
   path       = "\\Pipelines"
 
   repository {
-    repo_type               = var.use_github_repo ? "GitHub" : "TfsGit"
-    repo_id                 = var.use_github_repo ? var.github_repo_id : azuredevops_git_repository.main[0].id
-    repo_name               = var.use_github_repo ? var.github_repo_name : null
-    branch_name             = var.use_github_repo ? "refs/heads/main" : azuredevops_git_repository.main[0].default_branch
-    yml_path                = "pipelines/build-deploy.yml"
-    service_connection_id   = var.use_github_repo ? azuredevops_serviceendpoint_github.main[0].id : null
+    repo_type             = var.use_github_repo ? "GitHub" : "TfsGit"
+    repo_id               = var.use_github_repo ? var.github_repo_name : azuredevops_git_repository.main[0].id
+    branch_name           = var.use_github_repo ? "refs/heads/main" : azuredevops_git_repository.main[0].default_branch
+    yml_path              = "pipelines/build-deploy.yml"
+    service_connection_id = var.use_github_repo ? azuredevops_serviceendpoint_github.main[0].id : null
   }
 
   variable_groups = [
@@ -174,12 +173,11 @@ resource "azuredevops_build_definition" "rollback" {
   path       = "\\Pipelines"
 
   repository {
-    repo_type               = var.use_github_repo ? "GitHub" : "TfsGit"
-    repo_id                 = var.use_github_repo ? var.github_repo_id : azuredevops_git_repository.main[0].id
-    repo_name               = var.use_github_repo ? var.github_repo_name : null
-    branch_name             = var.use_github_repo ? "refs/heads/main" : azuredevops_git_repository.main[0].default_branch
-    yml_path                = "pipelines/rollback.yml"
-    service_connection_id   = var.use_github_repo ? azuredevops_serviceendpoint_github.main[0].id : null
+    repo_type             = var.use_github_repo ? "GitHub" : "TfsGit"
+    repo_id               = var.use_github_repo ? var.github_repo_name : azuredevops_git_repository.main[0].id
+    branch_name           = var.use_github_repo ? "refs/heads/main" : azuredevops_git_repository.main[0].default_branch
+    yml_path              = "pipelines/rollback.yml"
+    service_connection_id = var.use_github_repo ? azuredevops_serviceendpoint_github.main[0].id : null
   }
 
   variable_groups = [
