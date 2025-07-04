@@ -126,6 +126,16 @@ stages:
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
+                # Set version environment variables in App Service
+                az webapp config appsettings set \
+                  --name $(APP_SERVICE_NAME) \
+                  --resource-group $(RESOURCE_GROUP_NAME) \
+                  --settings \
+                    BUILD_VERSION="$(semanticVersion)" \
+                    BUILD_NUMBER="$(Build.BuildNumber)" \
+                    BUILD_DATE="$(Build.StartTime)" \
+                    GIT_COMMIT="$(Build.SourceVersion)"
+                
                 # Update App Service to use the new image version
                 az webapp config container set \
                   --name $(APP_SERVICE_NAME) \
@@ -142,7 +152,7 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                $appUrl = "https://$(APP_SERVICE_NAME).azurewebsites.net/health"
+                $appUrl = "https://$(APP_SERVICE_NAME).azurewebsites.net/version/health"
                 $maxAttempts = 10
                 $attempt = 1
                 
@@ -210,7 +220,7 @@ stages:
               targetType: 'inline'
               script: |
                 $prodAppName = "$(APP_SERVICE_NAME)" -replace "-dev", "-prod"
-                $appUrl = "https://$prodAppName.azurewebsites.net/health"
+                $appUrl = "https://$prodAppName.azurewebsites.net/version/health"
                 $maxAttempts = 10
                 $attempt = 1
                 
