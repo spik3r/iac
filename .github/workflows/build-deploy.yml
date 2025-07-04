@@ -7,6 +7,10 @@ on:
       - 'app-src/**'
       - '.github/workflows/**'
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   REGISTRY: ${{ secrets.CONTAINER_REGISTRY_NAME }}.azurecr.io
   IMAGE_NAME: ${{ secrets.DOCKER_IMAGE_NAME }}
