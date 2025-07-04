@@ -1,6 +1,20 @@
 # Vibes Infrastructure as Code
 
-This repository contains the Terraform infrastructure code for the Vibes application, including Azure App Service, Container Registry, and networking components.
+This repository contains the Terraform infrastructure code for the Vibes application, including Azure App Service, Container Registry, networking components, and Azure DevOps CI/CD pipelines with GitHub integration.
+
+## 🚀 Current Status - DEPLOYED ✅
+
+**The infrastructure is already deployed and ready to use:**
+
+- **App Service**: https://vibes-dev-app.azurewebsites.net
+- **Azure DevOps Project**: https://dev.azure.com/kaiftait/vibes-dev
+- **Container Registry**: vibesacrdev.azurecr.io
+- **GitHub Repository**: https://github.com/spik3r/iac
+
+### Active Pipelines
+- ✅ **Build-Deploy Pipeline**: Auto-triggers on commits to main branch
+- ✅ **Rollback Pipeline**: Manual trigger for deploying previous versions
+- ✅ **GitHub Integration**: Pipelines pull from private GitHub repo
 
 ## Prerequisites
 
@@ -8,23 +22,72 @@ This repository contains the Terraform infrastructure code for the Vibes applica
 - [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 - [Docker](https://docs.docker.com/get-docker/)
 - Azure subscription with appropriate permissions
+- Azure DevOps organization (for CI/CD pipelines)
+- GitHub repository (for source code)
 
-## Quick Start
+## 📋 Complete Setup Process (Already Done)
 
-1. **Login to Azure**
-   ```bash
-   az login
-   ```
+The following steps have already been completed for this project:
 
-2. **Bootstrap the remote state infrastructure**
-   ```bash
-   make bootstrap
-   ```
+### 1. Bootstrap Infrastructure ✅
+```bash
+cd bootstrap
+terraform init
+terraform apply
+```
 
-3. **Deploy to development environment**
-   ```bash
-   make apply-dev
-   ```
+### 2. Deploy Development Environment ✅
+```bash
+cd environments/dev
+terraform init -backend-config=backend.conf
+terraform apply -var-file="terraform.tfvars" -var-file="secrets.tfvars"
+```
+
+### 3. Configure Azure DevOps Integration ✅
+- Created Azure DevOps project: `vibes-dev`
+- Set up GitHub service connection with PAT
+- Created variable groups with ACR credentials
+- Deployed build-deploy and rollback pipelines
+
+### 4. GitHub Repository Setup ✅
+- Repository: `spik3r/iac` (private)
+- Pipeline YAML files committed and pushed
+- GitHub PAT configured for Azure DevOps access
+
+## 🔧 Current Configuration
+
+### Infrastructure Components
+- **Resource Group**: `vibes-dev-rg`
+- **App Service Plan**: `vibes-dev-asp` (B1 SKU)
+- **Web App**: `vibes-dev-app`
+- **Container Registry**: `vibesacrdev` (Basic SKU)
+- **Virtual Network**: `vibes-dev-vnet` (10.0.0.0/16)
+- **Subnets**: App Service (10.0.1.0/24), Private Endpoints (10.0.2.0/24)
+
+### DevOps Configuration
+- **Organization**: https://dev.azure.com/kaiftait
+- **Project**: vibes-dev
+- **Source**: GitHub repository (spik3r/iac)
+- **Pipelines**: Build-Deploy, Rollback
+- **Versioning**: Semantic versioning (v1.x.x)
+
+## 🚀 Quick Start (For New Changes)
+
+Since the infrastructure is already deployed, you can:
+
+1. **Make code changes** to your application
+2. **Commit and push** to the main branch
+3. **Watch the pipeline** automatically build and deploy
+
+```bash
+# Make your changes
+git add .
+git commit -m "Your changes"
+git push origin main
+
+# Monitor the pipeline at:
+# https://dev.azure.com/kaiftait/vibes-dev/_build
+```
 
 ## Docker Commands
 
@@ -45,24 +108,26 @@ az acr build --registry vibesacrdev --image vibes-app:v1.0.0 .
 az acr build --registry vibesacrdev --image vibes-app:latest .
 ```
 
-## DevOps Pipelines
+## 🔄 DevOps Pipelines (Active)
 
-This project includes Azure DevOps pipelines for automated CI/CD with semantic versioning:
+This project includes Azure DevOps pipelines for automated CI/CD with semantic versioning and GitHub integration:
 
-### Pipeline Features
+### Active Pipeline Features
 
-1. **Build & Deploy Pipeline** (`pipelines/build-deploy.yml`):
-   - Automatic semantic versioning (v1.2.3 format)
-   - Docker image build and push to ACR
-   - Automated deployment to dev environment
-   - Optional promotion to production
-   - Health checks after deployment
+1. **Build & Deploy Pipeline** (`pipelines/build-deploy.yml`) - **DEPLOYED** ✅:
+   - **Trigger**: Automatic on commits to main branch
+   - **Versioning**: Semantic versioning (v1.2.3 format)
+   - **Build**: Docker image build and push to ACR
+   - **Deploy**: Automated deployment to dev environment
+   - **Promotion**: Optional promotion to production
+   - **Verification**: Health checks after deployment
 
-2. **Rollback Pipeline** (`pipelines/rollback.yml`):
-   - Deploy any previous semantic version
-   - Safety confirmations required
-   - Verification that target image exists in ACR
-   - Post-rollback health checks
+2. **Rollback Pipeline** (`pipelines/rollback.yml`) - **DEPLOYED** ✅:
+   - **Trigger**: Manual execution only
+   - **Target**: Deploy any previous semantic version
+   - **Safety**: Confirmation prompts required
+   - **Validation**: Verifies target image exists in ACR
+   - **Monitoring**: Post-rollback health checks
 
 ### Semantic Versioning Strategy
 
@@ -71,34 +136,32 @@ This project includes Azure DevOps pipelines for automated CI/CD with semantic v
 - **Manual versioning**: Create Git tags for major/minor version bumps
 - **Latest tag**: Always points to the most recent stable release
 
-### Using the DevOps Module
+### GitHub Integration (Active)
 
-Add the DevOps pipeline module to your environment:
+- **Source Repository**: `spik3r/iac` (private GitHub repo)
+- **Service Connection**: GitHub PAT authentication
+- **Branch Monitoring**: Main branch for automatic builds
+- **Status Reporting**: Build status reported back to GitHub
 
-```hcl
-module "devops_pipeline" {
-  source = "../../modules/devops-pipeline"
-  
-  project_name             = var.project_name
-  environment             = var.environment
-  location                = var.location
-  tags                    = local.common_tags
-  
-  subscription_id         = data.azurerm_client_config.current.subscription_id
-  subscription_name       = "Your Subscription Name"
-  tenant_id              = data.azurerm_client_config.current.tenant_id
-  
-  service_principal_id    = var.devops_service_principal_id
-  service_principal_key   = var.devops_service_principal_key
-  
-  resource_group_name     = module.app_service.resource_group_name
-  container_registry_name = module.container_registry.name
-  app_service_name        = module.app_service.name
-  
-  acr_admin_username      = module.container_registry.admin_username
-  acr_admin_password      = module.container_registry.admin_password
-}
+### Pipeline URLs
+- **Build-Deploy**: https://dev.azure.com/kaiftait/vibes-dev/_build?definitionId=3
+- **Rollback**: https://dev.azure.com/kaiftait/vibes-dev/_build?definitionId=2
+
+### How to Use
+
+**Automatic Deployment:**
+```bash
+# Any commit to main triggers build-deploy pipeline
+git add .
+git commit -m "feat: add new feature"
+git push origin main
 ```
+
+**Manual Rollback:**
+1. Go to Azure DevOps project
+2. Run "vibes-rollback-dev" pipeline
+3. Specify target version (e.g., v1.0.5)
+4. Confirm deployment
 
 ## Project Structure
 
@@ -187,87 +250,72 @@ az account set --subscription "your-subscription-id"
 az account show
 ```
 
-## Setup Instructions
+## 📚 Setup Instructions (Reference)
 
-### Step 1: Bootstrap Remote State
+**Note**: The infrastructure is already deployed. These instructions are for reference or replicating the setup.
+
+### Step 1: Bootstrap Remote State ✅ COMPLETED
 
 The bootstrap process creates the Azure Storage Account for Terraform remote state.
 
 ```bash
-# Navigate to bootstrap directory
 cd bootstrap
-
-# Initialize Terraform
 terraform init
-
-# Review the plan
 terraform plan
-
-# Apply the bootstrap configuration
 terraform apply
-
-# Note the outputs - you'll need these for the next steps
-terraform output
+terraform output  # Note the storage account name
 ```
 
-### Step 2: Configure Backend for Environments
+### Step 2: Configure Backend for Environments ✅ COMPLETED
 
-After bootstrap completes, create backend configuration files for each environment:
+Backend configuration files are already created:
+- `environments/dev/backend.conf`
+- `environments/prod/backend.conf`
 
-```bash
-# Create backend config for dev environment
-cat > environments/dev/backend.conf << EOF
-resource_group_name  = "rg-terraform-state"
-storage_account_name = "tfstate[random-suffix]"  # Use output from bootstrap
-container_name       = "tfstate"
-key                  = "dev/terraform.tfstate"
-EOF
-
-# Create backend config for prod environment
-cat > environments/prod/backend.conf << EOF
-resource_group_name  = "rg-terraform-state"
-storage_account_name = "tfstate[random-suffix]"  # Use output from bootstrap
-container_name       = "tfstate"
-key                  = "prod/terraform.tfstate"
-EOF
-```
-
-### Step 3: Deploy Development Environment
+### Step 3: Deploy Development Environment ✅ COMPLETED
 
 ```bash
-# Navigate to dev environment
 cd environments/dev
-
-# Initialize with remote backend
 terraform init -backend-config=backend.conf
 
-# Review the plan
-terraform plan
+# Create secrets.tfvars with sensitive values (already done)
+# terraform.tfvars contains public configuration
 
-# Apply the configuration
-terraform apply
-
-# Note the app service URL from outputs
-terraform output app_service_url
+# Deploy infrastructure and DevOps pipelines
+terraform apply -var-file="terraform.tfvars" -var-file="secrets.tfvars"
 ```
 
-### Step 4: Deploy Production Environment
+**Current dev environment outputs:**
+- App Service URL: https://vibes-dev-app.azurewebsites.net
+- Container Registry: vibesacrdev.azurecr.io
+- DevOps Project: https://dev.azure.com/kaiftait/vibes-dev
+
+### Step 4: Azure DevOps Integration ✅ COMPLETED
+
+The DevOps module has been deployed with:
+
+```hcl
+# Key configuration in terraform.tfvars
+enable_devops_pipeline = true
+devops_use_github_repo = true
+github_repo_name = "spik3r/iac"
+devops_create_pipelines = true
+
+# Sensitive values in secrets.tfvars
+azuredevops_personal_access_token = "***"
+github_personal_access_token = "***"
+devops_service_principal_key = "***"
+```
+
+### Step 5: Production Environment (Optional)
+
+Production environment can be deployed similarly:
 
 ```bash
-# Navigate to prod environment
 cd environments/prod
-
-# Initialize with remote backend
 terraform init -backend-config=backend.conf
-
-# Review the plan
-terraform plan
-
-# Apply the configuration
-terraform apply
-
-# Note the app service URL from outputs
-terraform output app_service_url
+terraform plan -var-file="terraform.tfvars"
+terraform apply -var-file="terraform.tfvars"
 ```
 
 ## Building and Deploying Custom Application
@@ -416,14 +464,33 @@ terraform refresh
 terraform state show azurerm_linux_web_app.main
 ```
 
-## Next Steps
+## 🎯 Next Steps
 
-1. **CI/CD Pipeline**: Implement Azure DevOps or GitHub Actions for automated deployments
-2. **Monitoring**: Add Application Insights and Log Analytics
-3. **Scaling**: Configure auto-scaling rules for production
-4. **Security**: Implement Azure Key Vault for secrets management
-5. **Backup**: Configure backup policies for critical resources
-6. **Custom Domain**: Add custom domain and SSL certificates
+### Immediate Actions Available
+1. **Test the Pipeline**: Make a commit to trigger automatic build-deploy
+2. **Monitor Deployments**: Watch pipeline runs in Azure DevOps
+3. **Deploy to Production**: Apply the prod environment configuration
+4. **Custom Application**: Replace sample app with your actual application
+
+### Future Enhancements
+1. **Monitoring**: Add Application Insights and Log Analytics
+2. **Scaling**: Configure auto-scaling rules for production
+3. **Security**: Implement Azure Key Vault for secrets management
+4. **Backup**: Configure backup policies for critical resources
+5. **Custom Domain**: Add custom domain and SSL certificates
+6. **Multi-Environment**: Extend pipelines for staging/prod promotion
+
+### Testing Your Setup
+
+```bash
+# Test the automatic pipeline
+echo "# Test change" >> README.md
+git add README.md
+git commit -m "test: trigger pipeline"
+git push origin main
+
+# Monitor at: https://dev.azure.com/kaiftait/vibes-dev/_build
+```
 
 ## Contributing
 

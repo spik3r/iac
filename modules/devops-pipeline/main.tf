@@ -121,6 +121,8 @@ resource "azuredevops_serviceendpoint_github" "main" {
   auth_personal {
     personal_access_token = var.github_personal_access_token
   }
+  
+
 }
 
 # Git Repository (only create if not using GitHub)
@@ -155,8 +157,12 @@ resource "azuredevops_build_definition" "build_deploy" {
     azuredevops_variable_group.secrets.id
   ]
 
-  # Start with manual triggers only - can be updated later
+  # Enable CI triggers
   queue_status = "enabled"
+  
+  ci_trigger {
+    use_yaml = true
+  }
   
   depends_on = [
     azuredevops_git_repository.main,
@@ -164,6 +170,30 @@ resource "azuredevops_build_definition" "build_deploy" {
   ]
 }
 
+# Grant pipeline access to GitHub service connection for rollback
+resource "azuredevops_pipeline_authorization" "github_rollback" {
+  count = var.use_github_repo && var.create_pipelines ? 1 : 0
+  
+  project_id  = azuredevops_project.main.id
+  resource_id = azuredevops_serviceendpoint_github.main[0].id
+  type        = "endpoint"
+  pipeline_id = azuredevops_build_definition.rollback[0].id
+  
+  depends_on = [azuredevops_build_definition.rollback]
+}
+
+
+# Grant pipeline access to GitHub service connection
+resource "azuredevops_pipeline_authorization" "github_build_deploy" {
+  count = var.use_github_repo && var.create_pipelines ? 1 : 0
+  
+  project_id  = azuredevops_project.main.id
+  resource_id = azuredevops_serviceendpoint_github.main[0].id
+  type        = "endpoint"
+  pipeline_id = azuredevops_build_definition.build_deploy[0].id
+  
+  depends_on = [azuredevops_build_definition.build_deploy]
+}
 # Rollback Pipeline (created only if YAML files exist)
 resource "azuredevops_build_definition" "rollback" {
   count = var.create_pipelines ? 1 : 0

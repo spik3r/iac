@@ -103,7 +103,7 @@ variable "github_repo_name" {
 }
 
 variable "github_personal_access_token" {
-  description = "GitHub Personal Access Token for service connection"
+  description = "GitHub Personal Access Token for service connection (needs repo and admin:repo_hook permissions)"
   type        = string
   default     = ""
   sensitive   = true
