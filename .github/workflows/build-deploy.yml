@@ -1,0 +1,100 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'app-src/**'
+      - '.github/workflows/**'
+
+env:
+  REGISTRY: ${{ secrets.CONTAINER_REGISTRY_NAME }}.azurecr.io
+  IMAGE_NAME: ${{ secrets.DOCKER_IMAGE_NAME }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Generate Semantic Version
+      id: version
+      run: |
+        # Get the latest tag
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        
+        # Parse version numbers
+        VERSION=${LATEST_TAG#v}
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+        
+        # Check if this is a manual version bump
+        CURRENT_COMMIT_TAGS=$(git tag --points-at HEAD)
+        if [ -n "$CURRENT_COMMIT_TAGS" ]; then
+          NEW_VERSION=$(echo "$CURRENT_COMMIT_TAGS" | head -n1)
+        else
+          # Auto-increment patch version
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="v$MAJOR.$MINOR.$PATCH"
+        fi
+        
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "short_version=${NEW_VERSION#v}" >> $GITHUB_OUTPUT
+        echo "Generated version: $NEW_VERSION"
+    
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Login to ACR
+      run: az acr login --name ${{ secrets.CONTAINER_REGISTRY_NAME }}
+    
+    - name: Build and Push Docker Image
+      run: |
+        docker build --platform=linux/amd64 \
+          -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} \
+          -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+          app-src/
+        
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+    
+    - name: Create Git Tag
+      if: github.ref == 'refs/heads/main'
+      run: |
+        git config user.email "actions@github.com"
+        git config user.name "GitHub Actions"
+        
+        if ! git tag -l "${{ steps.version.outputs.version }}" | grep -q .; then
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+          echo "Created and pushed tag: ${{ steps.version.outputs.version }}"
+        fi
+
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: development
+    
+    steps:
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Deploy to Development
+      run: |
+        # Update App Service with new image
+        az webapp config container set \
+          --name ${{ secrets.APP_SERVICE_NAME }} \
+          --resource-group ${{ secrets.RESOURCE_GROUP_NAME }} \
+          --docker-custom-image-name ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}
+        
+        # Restart app service
+        az webapp restart \
+          --name ${{ secrets.APP_SERVICE_NAME }} \
+          --resource-group ${{ secrets.RESOURCE_GROUP_NAME }}
