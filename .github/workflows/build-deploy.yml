@@ -18,6 +18,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     
     steps:
     - uses: actions/checkout@v4
@@ -97,6 +99,16 @@ jobs:
     
     - name: Deploy to Development
       run: |
+        # Set version environment variables in App Service
+        az webapp config appsettings set \
+          --name ${{ secrets.APP_SERVICE_NAME }} \
+          --resource-group ${{ secrets.RESOURCE_GROUP_NAME }} \
+          --settings \
+            BUILD_VERSION="${{ needs.build.outputs.version }}" \
+            BUILD_NUMBER="${{ github.run_number }}" \
+            BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            GIT_COMMIT="${{ github.sha }}"
+        
         # Update App Service with new image
         az webapp config container set \
           --name ${{ secrets.APP_SERVICE_NAME }} \
