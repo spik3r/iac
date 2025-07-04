@@ -290,9 +290,9 @@ terraform apply -var-file="terraform.tfvars" -var-file="secrets.tfvars"
 - Container Registry: vibesacrdev.azurecr.io
 - DevOps Project: https://dev.azure.com/kaiftait/vibes-dev
 
-### Step 4: Azure DevOps Integration ✅ COMPLETED
+### Step 4: Azure DevOps Integration ✅ COMPLETED - FULLY AUTOMATED
 
-The DevOps module has been deployed with:
+The DevOps module has been deployed with **zero manual steps required**:
 
 ```hcl
 # Key configuration in terraform.tfvars
@@ -302,10 +302,16 @@ github_repo_name = "spik3r/iac"
 devops_create_pipelines = true
 
 # Sensitive values in secrets.tfvars
-azuredevops_personal_access_token = "***"
-github_personal_access_token = "***"
-devops_service_principal_key = "***"
+azuredevops_personal_access_token = "***"  # Full access PAT
+github_personal_access_token = "***"       # repo + admin:repo_hook permissions
+devops_service_principal_key = "***"       # Service principal key
 ```
+
+**Automated Features:**
+- ✅ **CI Triggers**: Automatically enabled via `ci_trigger { use_yaml = true }`
+- ✅ **Pipeline Authorization**: Auto-grants GitHub service connection access
+- ✅ **Webhook Setup**: GitHub webhooks configured automatically
+- ✅ **No Manual Steps**: No "Authorize" buttons to click in Azure DevOps
 
 ### Step 5: Production Environment (Optional)
 
@@ -463,6 +469,32 @@ terraform refresh
 # Show specific resource
 terraform state show azurerm_linux_web_app.main
 ```
+
+## 🔧 Fully Automated Setup Features
+
+This template provides **100% Infrastructure as Code** with zero manual steps:
+
+### ✅ **Automated CI/CD Setup**
+- **GitHub Integration**: Service connections auto-configured with PAT authentication
+- **Pipeline Authorization**: Terraform automatically grants pipeline access to GitHub
+- **CI Triggers**: Webhooks and triggers enabled automatically via YAML configuration
+- **Variable Groups**: ACR credentials and Azure service connections pre-configured
+
+### ✅ **Zero Manual Steps Required**
+- ❌ No "Authorize" buttons to click in Azure DevOps
+- ❌ No manual webhook configuration in GitHub
+- ❌ No manual service connection setup
+- ❌ No manual pipeline permissions configuration
+
+### 🔑 **Required Permissions**
+For full automation, ensure your tokens have these permissions:
+
+**GitHub PAT** (`github_personal_access_token`):
+- `repo` - Full repository access
+- `admin:repo_hook` - Webhook management
+
+**Azure DevOps PAT** (`azuredevops_personal_access_token`):
+- Full access (or minimum: Build, Code, Project and Team, Service Connections)
 
 ## 🎯 Next Steps
 
