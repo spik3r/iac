@@ -9,7 +9,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
     .WriteTo.ApplicationInsights(
-        connectionString: builder.Configuration.GetConnectionString("ApplicationInsights"),
+        connectionString: builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? builder.Configuration.GetConnectionString("ApplicationInsights"),
         telemetryConverter: new Serilog.Sinks.ApplicationInsights.TelemetryConverters.TraceTelemetryConverter())
     .CreateLogger();
 
