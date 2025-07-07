@@ -99,4 +99,45 @@ public class VersionController : ControllerBase
             });
         }
     }
+
+    [HttpGet("test-logs")]
+    public IActionResult TestLogs()
+    {
+        using var activity = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["Action"] = "TestLogs",
+            ["Controller"] = "Version",
+            ["TestId"] = Guid.NewGuid().ToString()
+        });
+
+        _logger.LogDebug("DEBUG: This is a debug message for testing Application Insights");
+        _logger.LogInformation("INFO: Testing Application Insights logging integration");
+        _logger.LogWarning("WARNING: This is a test warning message");
+        
+        // Log with structured data
+        _logger.LogInformation("Structured log test: User {UserId} performed action {Action} at {Timestamp}", 
+            "test-user-123", "test-logs", DateTime.UtcNow);
+
+        try
+        {
+            // Simulate some work
+            var random = new Random();
+            var delay = random.Next(10, 100);
+            Thread.Sleep(delay);
+            
+            _logger.LogInformation("Test operation completed successfully after {DelayMs}ms", delay);
+            
+            return Ok(new { 
+                Message = "Test logs generated successfully",
+                LogLevels = new[] { "Debug", "Information", "Warning" },
+                Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                TestId = activity.ToString()
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ERROR: Test logs endpoint failed");
+            return StatusCode(500, new { Error = "Test failed" });
+        }
+    }
 }
