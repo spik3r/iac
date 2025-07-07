@@ -3,17 +3,20 @@ using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Serilog with Application Insights
+// Configure Serilog for console logging only (Application Insights will use native integration)
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .WriteTo.ApplicationInsights(
-        connectionString: builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? builder.Configuration.GetConnectionString("ApplicationInsights"),
-        telemetryConverter: new Serilog.Sinks.ApplicationInsights.TelemetryConverters.TraceTelemetryConverter())
     .CreateLogger();
 
+// Use both Serilog (for console) and native logging (for Application Insights)
 builder.Host.UseSerilog();
+builder.Logging.AddApplicationInsights(
+    configureTelemetryConfiguration: (config) => 
+        config.ConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? 
+                                 builder.Configuration.GetConnectionString("ApplicationInsights"),
+    configureApplicationInsightsLoggerOptions: (options) => { });
 
 // Configure for Azure App Service
 var port = Environment.GetEnvironmentVariable("PORT") ?? "80";
@@ -34,7 +37,8 @@ builder.Services.AddSwaggerGen(c =>
 // Add Application Insights
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
-    options.ConnectionString = builder.Configuration.GetConnectionString("ApplicationInsights");
+    options.ConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? 
+                              builder.Configuration.GetConnectionString("ApplicationInsights");
 });
 
 var app = builder.Build();
