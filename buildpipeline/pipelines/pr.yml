@@ -1,0 +1,170 @@
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - app-src/*
+      - buildpipeline/pipelines/*
+
+variables:
+  - group: vibes-admin-variables
+  - group: vibes-admin-secrets
+  - group: vibes-dev-variables
+  - name: buildConfiguration
+    value: 'Release'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: Build
+    displayName: 'Build and Test Docker Image'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - checkout: self
+      fetchDepth: 0
+    
+    - template: templates/semantic-version.yml
+      parameters:
+        versionType: 'pr'
+        createGitTag: false
+    
+    - template: templates/docker-build-push.yml
+      parameters:
+        imageTag: $(prVersion)
+        imageName: $(DOCKER_IMAGE_NAME)
+        dockerfilePath: 'app-src/'
+        containerRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+        serviceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+        pushToRegistry: false  # Don't push PR builds to registry initially
+        platform: 'linux/amd64'
+    
+    - template: templates/security-testing.yml
+      parameters:
+        imageName: $(DOCKER_IMAGE_NAME)
+        imageTag: $(prVersion)
+        runSecurityScan: true
+        runContainerTest: true
+        testPort: 8080
+        containerPort: 80
+        testEndpoint: '/version/health'
+        expectedResponse: 'Healthy'
+        securitySeverity: 'HIGH,CRITICAL'
+        failOnSecurityIssues: false  # Don't fail PR on security issues, just warn
+
+- stage: OptionalDeploy
+  displayName: 'Optional Deploy to Dev'
+  dependsOn: Build
+  condition: succeeded()
+  variables:
+    prVersion: $[ stageDependencies.Build.Build.outputs['semantic-version.prVersion'] ]
+  jobs:
+  - job: WaitForValidation
+    displayName: 'Wait for Manual Validation'
+    pool: server
+    timeoutInMinutes: 1440  # 24 hours
+    steps:
+    - task: ManualValidation@0
+      displayName: 'Deploy PR to Dev Environment?'
+      inputs:
+        notifyUsers: |
+          $(Build.RequestedForEmail)
+        instructions: |
+          This PR has passed all tests and security scans. 
+          
+          PR: $(System.PullRequest.PullRequestNumber)
+          Version: $(prVersion)
+          
+          Do you want to deploy this PR to the dev environment for manual testing?
+          
+          Note: This will temporarily replace the current dev deployment.
+        onTimeout: 'reject'
+
+  - deployment: DeployPRToDev
+    displayName: 'Deploy PR to Dev Environment'
+    dependsOn: WaitForValidation
+    condition: succeeded()
+    pool:
+      vmImage: $(vmImageName)
+    environment: 'development-pr'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/docker-build-push.yml
+            parameters:
+              imageTag: $(prVersion)
+              imageName: $(DOCKER_IMAGE_NAME)
+              dockerfilePath: 'app-src/'
+              containerRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+              serviceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+              pushToRegistry: true  # Now push to admin ACR for deployment
+              platform: 'linux/amd64'
+          
+          - template: templates/image-promotion.yml
+            parameters:
+              sourceRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+              sourceSubscriptionId: $(ADMIN_SUBSCRIPTION_ID)
+              sourceResourceGroup: $(ADMIN_RESOURCE_GROUP_NAME)
+              sourceServiceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+              targetRegistry: $(DEV_CONTAINER_REGISTRY_NAME)
+              targetSubscriptionId: $(TARGET_SUBSCRIPTION_ID)
+              targetServiceConnection: $(TARGET_SERVICE_CONNECTION_NAME)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(prVersion)
+              checkIfExists: false  # Always copy PR images
+              forceOverwrite: true
+          
+          - template: templates/app-deployment.yml
+            parameters:
+              environment: 'dev'
+              serviceConnection: $(TARGET_SERVICE_CONNECTION_NAME)
+              resourceGroupName: $(DEV_RESOURCE_GROUP_NAME)
+              appServiceName: $(DEV_APP_SERVICE_NAME)
+              containerRegistry: $(DEV_CONTAINER_REGISTRY_NAME)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(prVersion)
+              appSettings:
+                - name: 'BUILD_VERSION'
+                  value: $(prVersion)
+                - name: 'BUILD_NUMBER'
+                  value: $(Build.BuildNumber)
+                - name: 'BUILD_DATE'
+                  value: $(Build.StartTime)
+                - name: 'GIT_COMMIT'
+                  value: $(Build.SourceVersion)
+                - name: 'PR_NUMBER'
+                  value: $(System.PullRequest.PullRequestNumber)
+                - name: 'IS_PR_DEPLOYMENT'
+                  value: 'true'
+              restartApp: true
+          
+          - template: templates/health-check.yml
+            parameters:
+              appServiceName: $(DEV_APP_SERVICE_NAME)
+              healthEndpoint: '/version/health'
+              maxAttempts: 10
+              delayBetweenAttempts: 30
+              expectedStatus: 'Healthy'
+              failOnError: true
+          
+          - task: PowerShell@2
+            displayName: 'PR Deployment Summary'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "🚀 PR Deployment Summary"
+                Write-Host "========================"
+                Write-Host "PR Number: $(System.PullRequest.PullRequestNumber)"
+                Write-Host "Version: $(prVersion)"
+                Write-Host "Environment: Development"
+                Write-Host "URL: https://$(DEV_APP_SERVICE_NAME).azurewebsites.net"
+                Write-Host ""
+                Write-Host "⚠️  Note: This is a temporary deployment for testing."
+                Write-Host "The next main branch deployment will replace this version."

@@ -1,0 +1,109 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - app-src/*
+      - buildpipeline/pipelines/*
+
+variables:
+  - group: vibes-admin-variables
+  - group: vibes-admin-secrets
+  - group: vibes-dev-variables
+  - name: buildConfiguration
+    value: 'Release'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: 'Build and Push to Admin ACR'
+  jobs:
+  - job: Build
+    displayName: 'Build Docker Image'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - checkout: self
+      fetchDepth: 0  # Fetch full history for semantic versioning
+    
+    - template: templates/semantic-version.yml
+      parameters:
+        versionType: 'semantic'
+        createGitTag: true
+    
+    - template: templates/docker-build-push.yml
+      parameters:
+        imageTag: $(semanticVersion)
+        imageName: $(DOCKER_IMAGE_NAME)
+        dockerfilePath: 'app-src/'
+        containerRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+        serviceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+        pushToRegistry: true
+        additionalTags:
+          - 'latest'
+        platform: 'linux/amd64'
+
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  variables:
+    semanticVersion: $[ stageDependencies.Build.Build.outputs['semantic-version.semanticVersion'] ]
+  jobs:
+  - deployment: DeployDev
+    displayName: 'Deploy to Development Environment'
+    pool:
+      vmImage: $(vmImageName)
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/image-promotion.yml
+            parameters:
+              sourceRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+              sourceSubscriptionId: $(ADMIN_SUBSCRIPTION_ID)
+              sourceResourceGroup: $(ADMIN_RESOURCE_GROUP_NAME)
+              sourceServiceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+              targetRegistry: $(DEV_CONTAINER_REGISTRY_NAME)
+              targetSubscriptionId: $(TARGET_SUBSCRIPTION_ID)
+              targetServiceConnection: $(TARGET_SERVICE_CONNECTION_NAME)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(semanticVersion)
+              additionalTags:
+                - 'latest'
+              checkIfExists: true
+              forceOverwrite: true
+          
+          - template: templates/app-deployment.yml
+            parameters:
+              environment: 'dev'
+              serviceConnection: $(TARGET_SERVICE_CONNECTION_NAME)
+              resourceGroupName: $(DEV_RESOURCE_GROUP_NAME)
+              appServiceName: $(DEV_APP_SERVICE_NAME)
+              containerRegistry: $(DEV_CONTAINER_REGISTRY_NAME)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(semanticVersion)
+              appSettings:
+                - name: 'BUILD_VERSION'
+                  value: $(semanticVersion)
+                - name: 'BUILD_NUMBER'
+                  value: $(Build.BuildNumber)
+                - name: 'BUILD_DATE'
+                  value: $(Build.StartTime)
+                - name: 'GIT_COMMIT'
+                  value: $(Build.SourceVersion)
+              restartApp: true
+          
+          - template: templates/health-check.yml
+            parameters:
+              appServiceName: $(DEV_APP_SERVICE_NAME)
+              healthEndpoint: '/version/health'
+              maxAttempts: 10
+              delayBetweenAttempts: 30
+              expectedStatus: 'Healthy'
+              failOnError: true

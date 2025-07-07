@@ -1,0 +1,253 @@
+# Template for security scanning and testing
+parameters:
+- name: imageName
+  type: string
+- name: imageTag
+  type: string
+- name: runSecurityScan
+  type: boolean
+  default: true
+- name: runContainerTest
+  type: boolean
+  default: true
+- name: testPort
+  type: number
+  default: 8080
+- name: containerPort
+  type: number
+  default: 80
+- name: testEndpoint
+  type: string
+  default: '/version/health'
+- name: expectedResponse
+  type: string
+  default: 'Healthy'
+- name: securitySeverity
+  type: string
+  default: 'HIGH,CRITICAL'
+- name: failOnSecurityIssues
+  type: boolean
+  default: false
+
+steps:
+- ${{ if eq(parameters.runSecurityScan, true) }}:
+  - task: PowerShell@2
+    displayName: 'Security Scan with Trivy'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "🔒 Running Security Scan"
+        Write-Host "======================="
+        Write-Host "Image: ${{ parameters.imageName }}:${{ parameters.imageTag }}"
+        Write-Host "Severity Levels: ${{ parameters.securitySeverity }}"
+        Write-Host "Fail on Issues: ${{ parameters.failOnSecurityIssues }}"
+        Write-Host ""
+        
+        try {
+          # Check if Trivy is available, if not install it
+          $trivyExists = Get-Command trivy -ErrorAction SilentlyContinue
+          if (-not $trivyExists) {
+            Write-Host "📦 Installing Trivy..."
+            
+            # Install Trivy using Docker
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock `
+              -v $(pwd):/tmp/app `
+              aquasec/trivy:latest image --help > $null
+            
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "✅ Trivy is available via Docker"
+            } else {
+              Write-Host "❌ Failed to access Trivy"
+              exit 1
+            }
+          }
+          
+          # Run security scan
+          Write-Host "🔍 Scanning image for vulnerabilities..."
+          
+          $exitCode = 0
+          if ("${{ parameters.failOnSecurityIssues }}" -eq "true") {
+            $exitCode = 1
+          }
+          
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock `
+            -v $(pwd):/tmp/app `
+            aquasec/trivy:latest image --exit-code $exitCode `
+            --severity ${{ parameters.securitySeverity }} `
+            --format table `
+            ${{ parameters.imageName }}:${{ parameters.imageTag }}
+          
+          $scanResult = $LASTEXITCODE
+          
+          if ($scanResult -eq 0) {
+            Write-Host "✅ Security scan passed - no critical vulnerabilities found"
+            Write-Host "##vso[task.setvariable variable=securityScanPassed;isOutput=true]true"
+          } else {
+            if ("${{ parameters.failOnSecurityIssues }}" -eq "true") {
+              Write-Host "❌ Security scan failed - critical vulnerabilities found"
+              Write-Host "##vso[task.setvariable variable=securityScanPassed;isOutput=true]false"
+              exit 1
+            } else {
+              Write-Host "⚠️  Security scan found vulnerabilities but failOnSecurityIssues is disabled"
+              Write-Host "##vso[task.setvariable variable=securityScanPassed;isOutput=true]false"
+            }
+          }
+          
+        } catch {
+          Write-Host "❌ Security scan failed with error: $($_.Exception.Message)"
+          Write-Host "##vso[task.setvariable variable=securityScanPassed;isOutput=true]false"
+          
+          if ("${{ parameters.failOnSecurityIssues }}" -eq "true") {
+            exit 1
+          }
+        }
+
+- ${{ if eq(parameters.runContainerTest, true) }}:
+  - task: PowerShell@2
+    displayName: 'Container Functionality Test'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "🧪 Running Container Functionality Test"
+        Write-Host "======================================"
+        Write-Host "Image: ${{ parameters.imageName }}:${{ parameters.imageTag }}"
+        Write-Host "Test Port: ${{ parameters.testPort }}"
+        Write-Host "Container Port: ${{ parameters.containerPort }}"
+        Write-Host "Test Endpoint: ${{ parameters.testEndpoint }}"
+        Write-Host "Expected Response: ${{ parameters.expectedResponse }}"
+        Write-Host ""
+        
+        $containerId = $null
+        try {
+          # Start container for testing
+          Write-Host "🚀 Starting container for testing..."
+          $containerId = docker run -d -p ${{ parameters.testPort }}:${{ parameters.containerPort }} ${{ parameters.imageName }}:${{ parameters.imageTag }}
+          
+          if ([string]::IsNullOrEmpty($containerId)) {
+            throw "Failed to start container"
+          }
+          
+          Write-Host "📦 Container started with ID: $($containerId.Substring(0, 12))"
+          
+          # Wait for container to be ready
+          Write-Host "⏳ Waiting for container to be ready..."
+          Start-Sleep -Seconds 15
+          
+          # Check if container is still running
+          $containerStatus = docker ps --filter "id=$containerId" --format "{{.Status}}"
+          if ([string]::IsNullOrEmpty($containerStatus)) {
+            # Get container logs for debugging
+            Write-Host "📋 Container logs:"
+            docker logs $containerId
+            throw "Container stopped unexpectedly"
+          }
+          
+          Write-Host "✅ Container is running: $containerStatus"
+          
+          # Test the application endpoint
+          Write-Host "🔍 Testing application endpoint..."
+          $testUrl = "http://localhost:${{ parameters.testPort }}${{ parameters.testEndpoint }}"
+          
+          $maxAttempts = 5
+          $testPassed = $false
+          
+          for ($i = 1; $i -le $maxAttempts; $i++) {
+            try {
+              Write-Host "Attempt $i of $maxAttempts - Testing: $testUrl"
+              $response = Invoke-RestMethod -Uri $testUrl -Method Get -TimeoutSec 10
+              
+              Write-Host "📊 Response: $($response | ConvertTo-Json -Compress)"
+              
+              # Check response
+              $responseCheck = $false
+              if ($response -is [string]) {
+                $responseCheck = $response -eq "${{ parameters.expectedResponse }}"
+              } elseif ($response.Status) {
+                $responseCheck = $response.Status -eq "${{ parameters.expectedResponse }}"
+              } elseif ($response.status) {
+                $responseCheck = $response.status -eq "${{ parameters.expectedResponse }}"
+              }
+              
+              if ($responseCheck) {
+                Write-Host "✅ Container test passed!"
+                $testPassed = $true
+                break
+              } else {
+                Write-Host "⚠️  Response doesn't match expected value"
+              }
+              
+            } catch {
+              Write-Host "❌ Test attempt $i failed: $($_.Exception.Message)"
+              if ($i -lt $maxAttempts) {
+                Write-Host "⏳ Waiting 5 seconds before retry..."
+                Start-Sleep -Seconds 5
+              }
+            }
+          }
+          
+          if ($testPassed) {
+            Write-Host "##vso[task.setvariable variable=containerTestPassed;isOutput=true]true"
+          } else {
+            Write-Host "❌ Container functionality test failed after $maxAttempts attempts"
+            Write-Host "##vso[task.setvariable variable=containerTestPassed;isOutput=true]false"
+            
+            # Get container logs for debugging
+            Write-Host "📋 Container logs for debugging:"
+            docker logs $containerId
+            
+            exit 1
+          }
+          
+        } catch {
+          Write-Host "❌ Container test failed: $($_.Exception.Message)"
+          Write-Host "##vso[task.setvariable variable=containerTestPassed;isOutput=true]false"
+          
+          if ($containerId) {
+            Write-Host "📋 Container logs for debugging:"
+            docker logs $containerId
+          }
+          
+          exit 1
+        } finally {
+          # Clean up container
+          if ($containerId) {
+            Write-Host "🧹 Cleaning up test container..."
+            docker stop $containerId | Out-Null
+            docker rm $containerId | Out-Null
+            Write-Host "✅ Test container cleaned up"
+          }
+        }
+
+- task: PowerShell@2
+  displayName: 'Security and Testing Summary'
+  condition: always()
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "📊 Security and Testing Summary"
+      Write-Host "=============================="
+      
+      ${{ if eq(parameters.runSecurityScan, true) }}:
+      $securityPassed = "$(securityScanPassed)"
+      if ($securityPassed -eq "true") {
+        Write-Host "🔒 Security Scan: ✅ PASSED"
+      } else {
+        Write-Host "🔒 Security Scan: ❌ FAILED (vulnerabilities found)"
+      }
+      ${{ else }}:
+      Write-Host "🔒 Security Scan: ⏭️  SKIPPED"
+      ${{ end }}
+      
+      ${{ if eq(parameters.runContainerTest, true) }}:
+      $containerPassed = "$(containerTestPassed)"
+      if ($containerPassed -eq "true") {
+        Write-Host "🧪 Container Test: ✅ PASSED"
+      } else {
+        Write-Host "🧪 Container Test: ❌ FAILED"
+      }
+      ${{ else }}:
+      Write-Host "🧪 Container Test: ⏭️  SKIPPED"
+      ${{ end }}
+      
+      Write-Host ""
+      Write-Host "Image: ${{ parameters.imageName }}:${{ parameters.imageTag }}"

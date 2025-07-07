@@ -1,0 +1,183 @@
+# Template for performing application health checks
+parameters:
+- name: appServiceName
+  type: string
+- name: healthEndpoint
+  type: string
+  default: '/version/health'
+- name: deploymentSlot
+  type: string
+  default: ''
+- name: maxAttempts
+  type: number
+  default: 15
+- name: delayBetweenAttempts
+  type: number
+  default: 30
+- name: timeoutPerRequest
+  type: number
+  default: 30
+- name: expectedStatus
+  type: string
+  default: 'Healthy'
+- name: customValidation
+  type: string
+  default: ''
+- name: failOnError
+  type: boolean
+  default: true
+
+steps:
+- task: PowerShell@2
+  displayName: 'Application Health Check'
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Build the health check URL
+      $appName = "${{ parameters.appServiceName }}"
+      $healthEndpoint = "${{ parameters.healthEndpoint }}"
+      $deploymentSlot = "${{ parameters.deploymentSlot }}"
+      $maxAttempts = ${{ parameters.maxAttempts }}
+      $delaySeconds = ${{ parameters.delayBetweenAttempts }}
+      $timeoutSeconds = ${{ parameters.timeoutPerRequest }}
+      $expectedStatus = "${{ parameters.expectedStatus }}"
+      $customValidation = "${{ parameters.customValidation }}"
+      $failOnError = [System.Convert]::ToBoolean("${{ parameters.failOnError }}")
+      
+      # Construct URL
+      if ([string]::IsNullOrEmpty($deploymentSlot)) {
+        $appUrl = "https://$appName.azurewebsites.net$healthEndpoint"
+      } else {
+        $appUrl = "https://$appName-$deploymentSlot.azurewebsites.net$healthEndpoint"
+      }
+      
+      Write-Host "🏥 Starting Health Check"
+      Write-Host "======================="
+      Write-Host "URL: $appUrl"
+      Write-Host "Expected Status: $expectedStatus"
+      Write-Host "Max Attempts: $maxAttempts"
+      Write-Host "Delay Between Attempts: $delaySeconds seconds"
+      Write-Host "Timeout Per Request: $timeoutSeconds seconds"
+      Write-Host ""
+      
+      $attempt = 1
+      $healthCheckPassed = $false
+      $lastError = ""
+      
+      do {
+        try {
+          Write-Host "🔍 Health check attempt $attempt of $maxAttempts..."
+          
+          # Make the health check request
+          $response = Invoke-RestMethod -Uri $appUrl -Method Get -TimeoutSec $timeoutSeconds -ErrorAction Stop
+          
+          Write-Host "📊 Response received:"
+          Write-Host ($response | ConvertTo-Json -Depth 3)
+          
+          # Check if response contains expected status
+          $statusCheck = $false
+          if ($response -is [string]) {
+            $statusCheck = $response -eq $expectedStatus
+          } elseif ($response.Status) {
+            $statusCheck = $response.Status -eq $expectedStatus
+          } elseif ($response.status) {
+            $statusCheck = $response.status -eq $expectedStatus
+          }
+          
+          # Custom validation if provided
+          $customCheck = $true
+          if (-not [string]::IsNullOrEmpty($customValidation)) {
+            try {
+              $customCheck = Invoke-Expression $customValidation
+              Write-Host "🔧 Custom validation result: $customCheck"
+            } catch {
+              Write-Host "⚠️  Custom validation failed: $($_.Exception.Message)"
+              $customCheck = $false
+            }
+          }
+          
+          if ($statusCheck -and $customCheck) {
+            Write-Host "✅ Health check passed!"
+            Write-Host "Status: $expectedStatus"
+            $healthCheckPassed = $true
+            break
+          } else {
+            Write-Host "❌ Health check failed - status check: $statusCheck, custom check: $customCheck"
+            $lastError = "Health check validation failed"
+          }
+          
+        } catch {
+          $lastError = $_.Exception.Message
+          Write-Host "❌ Health check failed: $lastError"
+          
+          # Check for specific error types
+          if ($lastError -like "*timeout*" -or $lastError -like "*timed out*") {
+            Write-Host "⏱️  Request timed out - application may still be starting"
+          } elseif ($lastError -like "*404*" -or $lastError -like "*Not Found*") {
+            Write-Host "🔍 Endpoint not found - check if health endpoint exists"
+          } elseif ($lastError -like "*503*" -or $lastError -like "*Service Unavailable*") {
+            Write-Host "🚫 Service unavailable - application may be starting up"
+          }
+        }
+        
+        if ($attempt -lt $maxAttempts) {
+          Write-Host "⏳ Waiting $delaySeconds seconds before next attempt..."
+          Start-Sleep -Seconds $delaySeconds
+        }
+        $attempt++
+      } while ($attempt -le $maxAttempts -and -not $healthCheckPassed)
+      
+      # Final result
+      Write-Host ""
+      Write-Host "📋 Health Check Summary"
+      Write-Host "======================"
+      Write-Host "URL: $appUrl"
+      Write-Host "Attempts: $($attempt - 1) of $maxAttempts"
+      
+      if ($healthCheckPassed) {
+        Write-Host "Result: ✅ PASSED"
+        Write-Host "##vso[task.setvariable variable=healthCheckPassed;isOutput=true]true"
+        Write-Host "##vso[task.setvariable variable=healthCheckAttempts;isOutput=true]$($attempt - 1)"
+      } else {
+        Write-Host "Result: ❌ FAILED"
+        Write-Host "Last Error: $lastError"
+        Write-Host "##vso[task.setvariable variable=healthCheckPassed;isOutput=true]false"
+        Write-Host "##vso[task.setvariable variable=healthCheckAttempts;isOutput=true]$($attempt - 1)"
+        Write-Host "##vso[task.setvariable variable=healthCheckLastError;isOutput=true]$lastError"
+        
+        if ($failOnError) {
+          Write-Host ""
+          Write-Host "💡 Troubleshooting Tips:"
+          Write-Host "- Check application logs in Azure Portal"
+          Write-Host "- Verify the health endpoint exists and returns expected format"
+          Write-Host "- Ensure the application has fully started"
+          Write-Host "- Check if there are any startup dependencies"
+          exit 1
+        } else {
+          Write-Host "⚠️  Health check failed but failOnError is disabled"
+        }
+      }
+
+- task: PowerShell@2
+  displayName: 'Health Check Results'
+  condition: always()
+  inputs:
+    targetType: 'inline'
+    script: |
+      $healthPassed = "$(healthCheckPassed)"
+      $attempts = "$(healthCheckAttempts)"
+      $lastError = "$(healthCheckLastError)"
+      
+      Write-Host "🏥 Final Health Check Status"
+      Write-Host "============================"
+      
+      if ($healthPassed -eq "true") {
+        Write-Host "✅ Application is healthy and ready!"
+        Write-Host "🎯 Health check passed in $attempts attempt(s)"
+      } else {
+        Write-Host "❌ Application health check failed"
+        Write-Host "🎯 Failed after $attempts attempt(s)"
+        if (-not [string]::IsNullOrEmpty($lastError)) {
+          Write-Host "🔍 Last error: $lastError"
+        }
+      }

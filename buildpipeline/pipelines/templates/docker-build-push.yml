@@ -1,0 +1,115 @@
+# Template for building and pushing Docker images
+parameters:
+- name: imageTag
+  type: string
+- name: imageName
+  type: string
+  default: '$(DOCKER_IMAGE_NAME)'
+- name: dockerfilePath
+  type: string
+  default: 'app-src/'
+- name: containerRegistry
+  type: string
+- name: serviceConnection
+  type: string
+- name: pushToRegistry
+  type: boolean
+  default: true
+- name: additionalTags
+  type: object
+  default: []
+- name: buildArgs
+  type: object
+  default: []
+- name: platform
+  type: string
+  default: 'linux/amd64'
+
+steps:
+- task: AzureCLI@2
+  displayName: 'Build Docker Image'
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Building Docker image..."
+      echo "Registry: ${{ parameters.containerRegistry }}"
+      echo "Image: ${{ parameters.imageName }}"
+      echo "Tag: ${{ parameters.imageTag }}"
+      echo "Dockerfile path: ${{ parameters.dockerfilePath }}"
+      
+      # Build base image name
+      BASE_IMAGE="${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}"
+      
+      # Build docker command
+      DOCKER_CMD="docker build --platform=${{ parameters.platform }}"
+      
+      # Add build args if provided
+      ${{ each buildArg in parameters.buildArgs }}:
+      DOCKER_CMD="$DOCKER_CMD --build-arg ${{ buildArg.name }}=${{ buildArg.value }}"
+      ${{ end }}
+      
+      # Add primary tag
+      DOCKER_CMD="$DOCKER_CMD -t ${BASE_IMAGE}:${{ parameters.imageTag }}"
+      
+      # Add additional tags if provided
+      ${{ each tag in parameters.additionalTags }}:
+      DOCKER_CMD="$DOCKER_CMD -t ${BASE_IMAGE}:${{ tag }}"
+      ${{ end }}
+      
+      # Add dockerfile path
+      DOCKER_CMD="$DOCKER_CMD ${{ parameters.dockerfilePath }}"
+      
+      echo "Executing: $DOCKER_CMD"
+      eval $DOCKER_CMD
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ Docker image built successfully"
+        echo "##vso[task.setvariable variable=dockerBuildSuccess;isOutput=true]true"
+        echo "##vso[task.setvariable variable=builtImageName;isOutput=true]${BASE_IMAGE}:${{ parameters.imageTag }}"
+      else
+        echo "❌ Docker build failed"
+        echo "##vso[task.setvariable variable=dockerBuildSuccess;isOutput=true]false"
+        exit 1
+      fi
+
+- ${{ if eq(parameters.pushToRegistry, true) }}:
+  - task: AzureCLI@2
+    displayName: 'Push to Container Registry'
+    inputs:
+      azureSubscription: '${{ parameters.serviceConnection }}'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "Pushing Docker image to registry..."
+        
+        # Login to ACR
+        az acr login --name ${{ parameters.containerRegistry }}
+        
+        # Build base image name
+        BASE_IMAGE="${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}"
+        
+        # Push primary tag
+        echo "Pushing ${BASE_IMAGE}:${{ parameters.imageTag }}"
+        docker push "${BASE_IMAGE}:${{ parameters.imageTag }}"
+        
+        # Push additional tags if provided
+        ${{ each tag in parameters.additionalTags }}:
+        echo "Pushing ${BASE_IMAGE}:${{ tag }}"
+        docker push "${BASE_IMAGE}:${{ tag }}"
+        ${{ end }}
+        
+        echo "✅ All images pushed successfully"
+        echo "##vso[task.setvariable variable=dockerPushSuccess;isOutput=true]true"
+        echo "Primary image: ${BASE_IMAGE}:${{ parameters.imageTag }}"
+
+- ${{ if eq(parameters.pushToRegistry, false) }}:
+  - task: PowerShell@2
+    displayName: 'Image Built (No Push)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "✅ Docker image built successfully (not pushed to registry)"
+        Write-Host "Image: ${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+        Write-Host "##vso[task.setvariable variable=dockerPushSuccess;isOutput=true]false"

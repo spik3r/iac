@@ -37,3 +37,24 @@ devops_service_principal_key = "your-service-principal-secret"
 
 # DevOps Settings
 devops_min_reviewers = 1
+
+# Application Insights Configuration
+log_retention_days                = 30
+app_insights_sampling_percentage  = 100
+app_insights_disable_ip_masking  = false
+
+# Monitoring and Alerts Configuration
+enable_monitoring_alerts = false
+alert_email_receivers = [
+  # {
+  #   name          = "admin"
+  #   email_address = "admin@yourcompany.com"
+  # }
+]
+error_rate_threshold        = 10
+response_time_threshold_ms  = 5000
+
+# Availability Test Configuration
+enable_availability_test           = false
+availability_test_frequency        = 300
+availability_threshold_percentage  = 90

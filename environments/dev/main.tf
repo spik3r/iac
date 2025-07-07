@@ -70,6 +70,34 @@ module "container_registry" {
   tags = local.common_tags
 }
 
+module "application_insights" {
+  source = "../../modules/application-insights"
+
+  application_insights_name      = "${local.name_prefix}-appinsights"
+  log_analytics_workspace_name  = "${local.name_prefix}-logs"
+  location                      = var.location
+  resource_group_name           = azurerm_resource_group.main.name
+  application_type              = "web"
+  retention_in_days             = var.log_retention_days
+  sampling_percentage           = var.app_insights_sampling_percentage
+  disable_ip_masking           = var.app_insights_disable_ip_masking
+
+  # Alerts configuration
+  create_action_group          = var.enable_monitoring_alerts
+  create_alerts               = var.enable_monitoring_alerts
+  alert_email_receivers       = var.alert_email_receivers
+  error_rate_threshold        = var.error_rate_threshold
+  response_time_threshold_ms  = var.response_time_threshold_ms
+
+  # Availability test configuration
+  create_availability_test         = var.enable_availability_test
+  availability_test_url           = var.enable_availability_test ? "https://${local.name_prefix}-app.azurewebsites.net/version/health" : ""
+  availability_test_frequency     = var.availability_test_frequency
+  availability_threshold_percentage = var.availability_threshold_percentage
+
+  tags = local.common_tags
+}
+
 module "app_service" {
   source = "../../modules/app-service"
 
@@ -87,8 +115,10 @@ module "app_service" {
   enable_vnet_integration = true
 
   app_settings = merge(var.app_settings, {
-    ASPNETCORE_ENVIRONMENT = "Development"
-    PORT                   = "80"
+    ASPNETCORE_ENVIRONMENT                    = "Development"
+    PORT                                     = "80"
+    APPLICATIONINSIGHTS_CONNECTION_STRING    = module.application_insights.connection_string
+    ApplicationInsights__ConnectionString    = module.application_insights.connection_string
   })
 
   always_on               = var.app_service_always_on

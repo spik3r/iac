@@ -1,0 +1,55 @@
+# Project Configuration
+project_name = "vibes"
+location     = "East US"
+
+# Admin Subscription (iac-admin) - where ACR and build pipelines live
+admin_subscription_id   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+admin_subscription_name = "iac-admin"
+admin_service_principal_id  = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+admin_service_principal_key = "your-admin-service-principal-key"
+
+# Target Subscription - where dev/uat/prod environments live
+target_subscription_id   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+target_subscription_name = "your-target-subscription-name"
+target_service_principal_id  = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+target_service_principal_key = "your-target-service-principal-key"
+
+# Azure AD Tenant
+tenant_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Azure DevOps Configuration
+azuredevops_org_service_url       = "https://dev.azure.com/your-org"
+azuredevops_personal_access_token = "your-azure-devops-pat"
+
+# GitHub Configuration
+use_github_repo                = true
+github_repo_name              = "your-org/your-repo"
+github_personal_access_token  = "your-github-pat"
+
+# Container Registry Configuration
+admin_acr_sku = "Standard"
+admin_acr_geo_replications = [
+  {
+    location                = "West US 2"
+    zone_redundancy_enabled = false
+  }
+]
+
+# Docker Configuration
+docker_image_name = "vibes-app"
+
+# Target Environment Configuration (from your existing dev environment)
+dev_resource_group_name      = "vibes-dev-rg"
+dev_container_registry_name  = "vibesacrdev"
+dev_app_service_name         = "vibes-dev-app"
+
+# Pipeline Configuration
+create_pipelines = true
+
+# Tags
+tags = {
+  Environment = "admin"
+  Project     = "vibes"
+  ManagedBy   = "terraform"
+  Purpose     = "build-pipeline"
+}

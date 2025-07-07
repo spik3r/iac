@@ -1,0 +1,203 @@
+trigger: none  # Manual trigger only
+
+parameters:
+- name: targetVersion
+  displayName: 'Target Version to Deploy'
+  type: string
+  default: 'latest'
+- name: targetEnvironment
+  displayName: 'Target Environment'
+  type: string
+  default: 'dev'
+  values:
+  - dev
+  - uat
+  - prod
+- name: forceRedeploy
+  displayName: 'Force Redeploy (even if version already exists in target ACR)'
+  type: boolean
+  default: false
+
+variables:
+  - group: vibes-admin-variables
+  - group: vibes-admin-secrets
+  - group: vibes-dev-variables  # Will be dynamically selected based on environment
+  - name: buildConfiguration
+    value: 'Release'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+  - name: deployVersion
+    value: ${{ parameters.targetVersion }}
+  - name: deployEnvironment
+    value: ${{ parameters.targetEnvironment }}
+
+stages:
+- stage: ValidateVersion
+  displayName: 'Validate Version and Environment'
+  jobs:
+  - job: Validate
+    displayName: 'Validate Deployment Parameters'
+    pool:
+      vmImage: $(vmImageName)
+    
+    steps:
+    - template: templates/semantic-version.yml
+      parameters:
+        versionType: 'manual'
+        manualVersion: $(deployVersion)
+        createGitTag: false
+    
+    - task: AzureCLI@2
+      displayName: 'Validate Version Exists in Admin ACR'
+      inputs:
+        azureSubscription: '$(ADMIN_SERVICE_CONNECTION_NAME)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          echo "Validating version: $(deployVersion)"
+          echo "Target environment: $(deployEnvironment)"
+          
+          # Login to Admin ACR
+          az acr login --name $(ADMIN_CONTAINER_REGISTRY_NAME)
+          
+          # Check if version exists in admin ACR
+          if [ "$(deployVersion)" = "latest" ]; then
+            echo "Using latest version from admin ACR"
+            ACTUAL_VERSION=$(az acr repository show-tags --name $(ADMIN_CONTAINER_REGISTRY_NAME) --repository $(DOCKER_IMAGE_NAME) --orderby time_desc --output tsv | head -1)
+            echo "##vso[task.setvariable variable=actualVersion;isOutput=true]$ACTUAL_VERSION"
+            echo "Latest version resolved to: $ACTUAL_VERSION"
+          else
+            # Check if specific version exists
+            if az acr repository show-tags --name $(ADMIN_CONTAINER_REGISTRY_NAME) --repository $(DOCKER_IMAGE_NAME) --output tsv | grep -q "^$(deployVersion)$"; then
+              echo "✅ Version $(deployVersion) found in admin ACR"
+              echo "##vso[task.setvariable variable=actualVersion;isOutput=true]$(deployVersion)"
+            else
+              echo "❌ Version $(deployVersion) not found in admin ACR"
+              echo "Available versions:"
+              az acr repository show-tags --name $(ADMIN_CONTAINER_REGISTRY_NAME) --repository $(DOCKER_IMAGE_NAME) --output table
+              exit 1
+            fi
+          fi
+    
+    - task: PowerShell@2
+      displayName: 'Set Environment Variables'
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Set environment-specific variables based on target environment
+          switch ("$(deployEnvironment)") {
+            "dev" {
+              Write-Host "##vso[task.setvariable variable=targetResourceGroup;isOutput=true]$(DEV_RESOURCE_GROUP_NAME)"
+              Write-Host "##vso[task.setvariable variable=targetACR;isOutput=true]$(DEV_CONTAINER_REGISTRY_NAME)"
+              Write-Host "##vso[task.setvariable variable=targetAppService;isOutput=true]$(DEV_APP_SERVICE_NAME)"
+              Write-Host "##vso[task.setvariable variable=targetServiceConnection;isOutput=true]$(TARGET_SERVICE_CONNECTION_NAME)"
+            }
+            "uat" {
+              # These would need to be added to variable groups
+              Write-Host "##vso[task.setvariable variable=targetResourceGroup;isOutput=true]vibes-uat-rg"
+              Write-Host "##vso[task.setvariable variable=targetACR;isOutput=true]vibesacruat"
+              Write-Host "##vso[task.setvariable variable=targetAppService;isOutput=true]vibes-uat-app"
+              Write-Host "##vso[task.setvariable variable=targetServiceConnection;isOutput=true]$(TARGET_SERVICE_CONNECTION_NAME)"
+            }
+            "prod" {
+              # These would need to be added to variable groups
+              Write-Host "##vso[task.setvariable variable=targetResourceGroup;isOutput=true]vibes-prod-rg"
+              Write-Host "##vso[task.setvariable variable=targetACR;isOutput=true]vibesacrprod"
+              Write-Host "##vso[task.setvariable variable=targetAppService;isOutput=true]vibes-prod-app"
+              Write-Host "##vso[task.setvariable variable=targetServiceConnection;isOutput=true]$(TARGET_SERVICE_CONNECTION_NAME)"
+            }
+            default {
+              Write-Host "❌ Invalid environment: $(deployEnvironment)"
+              exit 1
+            }
+          }
+          
+          Write-Host "Environment variables set for $(deployEnvironment)"
+
+- stage: Deploy
+  displayName: 'Deploy to ${{ parameters.targetEnvironment }}'
+  dependsOn: ValidateVersion
+  variables:
+    actualVersion: $[ stageDependencies.ValidateVersion.Validate.outputs['Validate.actualVersion'] ]
+    targetResourceGroup: $[ stageDependencies.ValidateVersion.Validate.outputs['Validate.targetResourceGroup'] ]
+    targetACR: $[ stageDependencies.ValidateVersion.Validate.outputs['Validate.targetACR'] ]
+    targetAppService: $[ stageDependencies.ValidateVersion.Validate.outputs['Validate.targetAppService'] ]
+    targetServiceConnection: $[ stageDependencies.ValidateVersion.Validate.outputs['Validate.targetServiceConnection'] ]
+  jobs:
+  - deployment: Deploy
+    displayName: 'Deploy to $(deployEnvironment)'
+    pool:
+      vmImage: $(vmImageName)
+    environment: '${{ parameters.targetEnvironment }}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/image-promotion.yml
+            parameters:
+              sourceRegistry: $(ADMIN_CONTAINER_REGISTRY_NAME)
+              sourceSubscriptionId: $(ADMIN_SUBSCRIPTION_ID)
+              sourceResourceGroup: $(ADMIN_RESOURCE_GROUP_NAME)
+              sourceServiceConnection: $(ADMIN_SERVICE_CONNECTION_NAME)
+              targetRegistry: $(targetACR)
+              targetSubscriptionId: $(TARGET_SUBSCRIPTION_ID)
+              targetServiceConnection: $(targetServiceConnection)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(actualVersion)
+              checkIfExists: true
+              forceOverwrite: ${{ parameters.forceRedeploy }}
+          
+          - template: templates/app-deployment.yml
+            parameters:
+              environment: $(deployEnvironment)
+              serviceConnection: $(targetServiceConnection)
+              resourceGroupName: $(targetResourceGroup)
+              appServiceName: $(targetAppService)
+              containerRegistry: $(targetACR)
+              imageName: $(DOCKER_IMAGE_NAME)
+              imageTag: $(actualVersion)
+              appSettings:
+                - name: 'DEPLOYED_VERSION'
+                  value: $(actualVersion)
+                - name: 'DEPLOYMENT_DATE'
+                  value: $(Build.StartTime)
+                - name: 'DEPLOYMENT_BUILD'
+                  value: $(Build.BuildNumber)
+                - name: 'DEPLOYMENT_ENVIRONMENT'
+                  value: $(deployEnvironment)
+              restartApp: true
+          
+          - template: templates/health-check.yml
+            parameters:
+              appServiceName: $(targetAppService)
+              healthEndpoint: '/version/health'
+              maxAttempts: 15
+              delayBetweenAttempts: 30
+              expectedStatus: 'Healthy'
+              failOnError: true
+          
+          - task: PowerShell@2
+            displayName: 'Deployment Summary'
+            condition: always()
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "🚀 Deployment Summary"
+                Write-Host "===================="
+                Write-Host "Environment: $(deployEnvironment)"
+                Write-Host "Version: $(actualVersion)"
+                Write-Host "App Service: $(targetAppService)"
+                Write-Host "Resource Group: $(targetResourceGroup)"
+                Write-Host "Container Registry: $(targetACR)"
+                Write-Host "URL: https://$(targetAppService).azurewebsites.net"
+                Write-Host ""
+                
+                $healthPassed = "$(healthCheckPassed)"
+                if ($healthPassed -eq "true") {
+                  Write-Host "✅ Deployment completed successfully"
+                } else {
+                  Write-Host "❌ Deployment failed health checks"
+                }
+                
+                Write-Host ""
+                Write-Host "To rollback, run this pipeline again with a previous version number."

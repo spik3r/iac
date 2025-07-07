@@ -1,0 +1,152 @@
+# Template for copying/promoting images between container registries
+parameters:
+- name: sourceRegistry
+  type: string
+- name: sourceSubscriptionId
+  type: string
+- name: sourceResourceGroup
+  type: string
+- name: sourceServiceConnection
+  type: string
+- name: targetRegistry
+  type: string
+- name: targetSubscriptionId
+  type: string
+- name: targetServiceConnection
+  type: string
+- name: imageName
+  type: string
+  default: '$(DOCKER_IMAGE_NAME)'
+- name: imageTag
+  type: string
+- name: additionalTags
+  type: object
+  default: []
+- name: checkIfExists
+  type: boolean
+  default: true
+- name: forceOverwrite
+  type: boolean
+  default: false
+
+steps:
+- ${{ if eq(parameters.checkIfExists, true) }}:
+  - task: AzureCLI@2
+    displayName: 'Check if Image Exists in Target Registry'
+    inputs:
+      azureSubscription: '${{ parameters.targetServiceConnection }}'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "Checking if image exists in target registry..."
+        echo "Target Registry: ${{ parameters.targetRegistry }}"
+        echo "Image: ${{ parameters.imageName }}:${{ parameters.imageTag }}"
+        
+        # Login to target ACR
+        az acr login --name ${{ parameters.targetRegistry }}
+        
+        # Check if image exists in target ACR
+        if az acr repository show-tags --name ${{ parameters.targetRegistry }} --repository ${{ parameters.imageName }} --output tsv | grep -q "^${{ parameters.imageTag }}$"; then
+          echo "✅ Image ${{ parameters.imageName }}:${{ parameters.imageTag }} already exists in target registry"
+          echo "##vso[task.setvariable variable=imageExistsInTarget;isOutput=true]true"
+          
+          if [ "${{ parameters.forceOverwrite }}" = "true" ]; then
+            echo "🔄 Force overwrite enabled - will proceed with copy"
+            echo "##vso[task.setvariable variable=shouldCopyImage;isOutput=true]true"
+          else
+            echo "ℹ️  Image exists and force overwrite is disabled - skipping copy"
+            echo "##vso[task.setvariable variable=shouldCopyImage;isOutput=true]false"
+          fi
+        else
+          echo "📥 Image not found in target registry - will copy from source"
+          echo "##vso[task.setvariable variable=imageExistsInTarget;isOutput=true]false"
+          echo "##vso[task.setvariable variable=shouldCopyImage;isOutput=true]true"
+        fi
+
+- task: AzureCLI@2
+  displayName: 'Copy Image from Source to Target Registry'
+  ${{ if eq(parameters.checkIfExists, true) }}:
+    condition: eq(variables['shouldCopyImage'], 'true')
+  inputs:
+    azureSubscription: '${{ parameters.sourceServiceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Copying image from source to target registry..."
+      echo "Source: ${{ parameters.sourceRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+      echo "Target: ${{ parameters.targetRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+      
+      # Switch to target subscription for import operation
+      az account set --subscription ${{ parameters.targetSubscriptionId }}
+      az acr login --name ${{ parameters.targetRegistry }}
+      
+      # Import primary image from source ACR to target ACR
+      echo "Importing primary tag: ${{ parameters.imageTag }}"
+      az acr import \
+        --name ${{ parameters.targetRegistry }} \
+        --source ${{ parameters.sourceRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }} \
+        --image ${{ parameters.imageName }}:${{ parameters.imageTag }} \
+        --registry /subscriptions/${{ parameters.sourceSubscriptionId }}/resourceGroups/${{ parameters.sourceResourceGroup }}/providers/Microsoft.ContainerRegistry/registries/${{ parameters.sourceRegistry }}
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ Primary image imported successfully"
+      else
+        echo "❌ Failed to import primary image"
+        exit 1
+      fi
+      
+      # Import additional tags if provided
+      ${{ each tag in parameters.additionalTags }}:
+      echo "Importing additional tag: ${{ tag }}"
+      az acr import \
+        --name ${{ parameters.targetRegistry }} \
+        --source ${{ parameters.sourceRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }} \
+        --image ${{ parameters.imageName }}:${{ tag }} \
+        --registry /subscriptions/${{ parameters.sourceSubscriptionId }}/resourceGroups/${{ parameters.sourceResourceGroup }}/providers/Microsoft.ContainerRegistry/registries/${{ parameters.sourceRegistry }}
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ Additional tag ${{ tag }} imported successfully"
+      else
+        echo "⚠️  Warning: Failed to import additional tag ${{ tag }}"
+      fi
+      ${{ end }}
+      
+      echo "✅ Image promotion completed"
+      echo "##vso[task.setvariable variable=imagePromotionSuccess;isOutput=true]true"
+      echo "Target image: ${{ parameters.targetRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+
+- task: PowerShell@2
+  displayName: 'Image Promotion Summary'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "📦 Image Promotion Summary"
+      Write-Host "========================="
+      Write-Host "Source Registry: ${{ parameters.sourceRegistry }}"
+      Write-Host "Target Registry: ${{ parameters.targetRegistry }}"
+      Write-Host "Image: ${{ parameters.imageName }}"
+      Write-Host "Primary Tag: ${{ parameters.imageTag }}"
+      
+      ${{ if gt(length(parameters.additionalTags), 0) }}:
+      Write-Host "Additional Tags:"
+      ${{ each tag in parameters.additionalTags }}:
+      Write-Host "  - ${{ tag }}"
+      ${{ end }}
+      ${{ end }}
+      
+      ${{ if eq(parameters.checkIfExists, true) }}:
+      $imageExists = "$(imageExistsInTarget)"
+      $shouldCopy = "$(shouldCopyImage)"
+      
+      if ($imageExists -eq "true") {
+        if ($shouldCopy -eq "true") {
+          Write-Host "Status: ✅ Image existed but was overwritten"
+        } else {
+          Write-Host "Status: ℹ️  Image already existed, copy skipped"
+        }
+      } else {
+        Write-Host "Status: ✅ Image copied successfully"
+      }
+      ${{ else }}:
+      Write-Host "Status: ✅ Image copied (no existence check performed)"
+      ${{ end }}

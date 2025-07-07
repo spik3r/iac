@@ -43,3 +43,26 @@ output "rollback_pipeline_id" {
   description = "ID of the rollback pipeline"
   value       = var.enable_devops_pipeline ? module.devops_pipeline[0].rollback_pipeline_id : null
 }
+
+# Application Insights Outputs
+output "application_insights_name" {
+  description = "Name of the Application Insights instance"
+  value       = module.application_insights.application_insights_name
+}
+
+output "application_insights_connection_string" {
+  description = "Connection string for Application Insights"
+  value       = module.application_insights.connection_string
+  sensitive   = true
+}
+
+output "application_insights_instrumentation_key" {
+  description = "Instrumentation key for Application Insights"
+  value       = module.application_insights.instrumentation_key
+  sensitive   = true
+}
+
+output "log_analytics_workspace_name" {
+  description = "Name of the Log Analytics workspace"
+  value       = module.application_insights.log_analytics_workspace_name
+}

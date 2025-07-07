@@ -134,3 +134,67 @@ variable "github_personal_access_token" {
   default     = ""
   sensitive   = true
 }
+
+# Application Insights Variables
+variable "log_retention_days" {
+  description = "Data retention in days for Log Analytics workspace"
+  type        = number
+  default     = 30
+}
+
+variable "app_insights_sampling_percentage" {
+  description = "Sampling percentage for Application Insights"
+  type        = number
+  default     = 100
+}
+
+variable "app_insights_disable_ip_masking" {
+  description = "Whether to disable IP masking in Application Insights"
+  type        = bool
+  default     = false
+}
+
+variable "enable_monitoring_alerts" {
+  description = "Whether to enable monitoring alerts"
+  type        = bool
+  default     = false
+}
+
+variable "alert_email_receivers" {
+  description = "List of email receivers for alerts"
+  type = list(object({
+    name          = string
+    email_address = string
+  }))
+  default = []
+}
+
+variable "error_rate_threshold" {
+  description = "Threshold for error rate alert (number of exceptions)"
+  type        = number
+  default     = 10
+}
+
+variable "response_time_threshold_ms" {
+  description = "Threshold for response time alert in milliseconds"
+  type        = number
+  default     = 5000
+}
+
+variable "enable_availability_test" {
+  description = "Whether to enable availability test"
+  type        = bool
+  default     = false
+}
+
+variable "availability_test_frequency" {
+  description = "Frequency of availability test in seconds"
+  type        = number
+  default     = 300
+}
+
+variable "availability_threshold_percentage" {
+  description = "Threshold percentage for availability alert"
+  type        = number
+  default     = 90
+}

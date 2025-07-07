@@ -1,0 +1,195 @@
+# Template for deploying applications to Azure App Service
+parameters:
+- name: environment
+  type: string
+- name: serviceConnection
+  type: string
+- name: resourceGroupName
+  type: string
+- name: appServiceName
+  type: string
+- name: containerRegistry
+  type: string
+- name: imageName
+  type: string
+  default: '$(DOCKER_IMAGE_NAME)'
+- name: imageTag
+  type: string
+- name: appSettings
+  type: object
+  default: []
+- name: deploymentSlot
+  type: string
+  default: ''
+- name: restartApp
+  type: boolean
+  default: true
+
+steps:
+- task: AzureCLI@2
+  displayName: 'Get Current Deployment Info'
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Getting current deployment information..."
+      
+      # Get current image for rollback info
+      CURRENT_IMAGE=$(az webapp config container show \
+        --name ${{ parameters.appServiceName }} \
+        --resource-group ${{ parameters.resourceGroupName }} \
+        ${{ if ne(parameters.deploymentSlot, '') }}:
+        --slot ${{ parameters.deploymentSlot }} \
+        ${{ end }}
+        --query "linuxFxVersion" -o tsv | cut -d'|' -f2)
+      
+      echo "Current image: $CURRENT_IMAGE"
+      echo "New image: ${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+      
+      # Set variables for later use
+      echo "##vso[task.setvariable variable=currentImage;isOutput=true]$CURRENT_IMAGE"
+      echo "##vso[task.setvariable variable=newImage;isOutput=true]${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+
+- task: AzureCLI@2
+  displayName: 'Update App Settings'
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Updating application settings..."
+      
+      # Build app settings command
+      SETTINGS_CMD="az webapp config appsettings set \
+        --name ${{ parameters.appServiceName }} \
+        --resource-group ${{ parameters.resourceGroupName }}"
+      
+      ${{ if ne(parameters.deploymentSlot, '') }}:
+      SETTINGS_CMD="$SETTINGS_CMD --slot ${{ parameters.deploymentSlot }}"
+      ${{ end }}
+      
+      # Add default deployment settings
+      SETTINGS_CMD="$SETTINGS_CMD --settings \
+        DEPLOYED_VERSION=\"${{ parameters.imageTag }}\" \
+        DEPLOYMENT_DATE=\"$(Build.StartTime)\" \
+        DEPLOYMENT_BUILD=\"$(Build.BuildNumber)\" \
+        DEPLOYMENT_ENVIRONMENT=\"${{ parameters.environment }}\" \
+        PREVIOUS_IMAGE=\"$(currentImage)\""
+      
+      # Add custom app settings if provided
+      ${{ each setting in parameters.appSettings }}:
+      SETTINGS_CMD="$SETTINGS_CMD ${{ setting.name }}=\"${{ setting.value }}\""
+      ${{ end }}
+      
+      echo "Executing: $SETTINGS_CMD"
+      eval $SETTINGS_CMD
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ App settings updated successfully"
+      else
+        echo "❌ Failed to update app settings"
+        exit 1
+      fi
+
+- task: AzureCLI@2
+  displayName: 'Update Container Image'
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Updating container image..."
+      
+      # Update App Service to use the new image version
+      UPDATE_CMD="az webapp config container set \
+        --name ${{ parameters.appServiceName }} \
+        --resource-group ${{ parameters.resourceGroupName }} \
+        --docker-custom-image-name ${{ parameters.containerRegistry }}.azurecr.io/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+      
+      ${{ if ne(parameters.deploymentSlot, '') }}:
+      UPDATE_CMD="$UPDATE_CMD --slot ${{ parameters.deploymentSlot }}"
+      ${{ end }}
+      
+      echo "Executing: $UPDATE_CMD"
+      eval $UPDATE_CMD
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ Container image updated successfully"
+        echo "##vso[task.setvariable variable=containerUpdateSuccess;isOutput=true]true"
+      else
+        echo "❌ Failed to update container image"
+        echo "##vso[task.setvariable variable=containerUpdateSuccess;isOutput=true]false"
+        exit 1
+      fi
+
+- ${{ if eq(parameters.restartApp, true) }}:
+  - task: AzureCLI@2
+    displayName: 'Restart App Service'
+    inputs:
+      azureSubscription: '${{ parameters.serviceConnection }}'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        echo "Restarting app service to ensure new image is pulled..."
+        
+        RESTART_CMD="az webapp restart \
+          --name ${{ parameters.appServiceName }} \
+          --resource-group ${{ parameters.resourceGroupName }}"
+        
+        ${{ if ne(parameters.deploymentSlot, '') }}:
+        RESTART_CMD="$RESTART_CMD --slot ${{ parameters.deploymentSlot }}"
+        ${{ end }}
+        
+        echo "Executing: $RESTART_CMD"
+        eval $RESTART_CMD
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ App service restarted successfully"
+          echo "##vso[task.setvariable variable=appRestartSuccess;isOutput=true]true"
+        else
+          echo "❌ Failed to restart app service"
+          echo "##vso[task.setvariable variable=appRestartSuccess;isOutput=true]false"
+          exit 1
+        fi
+
+- task: PowerShell@2
+  displayName: 'Deployment Summary'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "🚀 Deployment Summary"
+      Write-Host "===================="
+      Write-Host "Environment: ${{ parameters.environment }}"
+      Write-Host "App Service: ${{ parameters.appServiceName }}"
+      Write-Host "Resource Group: ${{ parameters.resourceGroupName }}"
+      ${{ if ne(parameters.deploymentSlot, '') }}:
+      Write-Host "Deployment Slot: ${{ parameters.deploymentSlot }}"
+      ${{ end }}
+      Write-Host "Container Registry: ${{ parameters.containerRegistry }}"
+      Write-Host "Image: ${{ parameters.imageName }}:${{ parameters.imageTag }}"
+      Write-Host "Previous Image: $(currentImage)"
+      Write-Host ""
+      
+      $containerSuccess = "$(containerUpdateSuccess)"
+      ${{ if eq(parameters.restartApp, true) }}:
+      $restartSuccess = "$(appRestartSuccess)"
+      ${{ end }}
+      
+      if ($containerSuccess -eq "true") {
+        Write-Host "✅ Container image updated successfully"
+        ${{ if eq(parameters.restartApp, true) }}:
+        if ($restartSuccess -eq "true") {
+          Write-Host "✅ App service restarted successfully"
+        } else {
+          Write-Host "⚠️  Warning: App service restart failed"
+        }
+        ${{ end }}
+        Write-Host "🌐 Application URL: https://${{ parameters.appServiceName }}.azurewebsites.net"
+        ${{ if ne(parameters.deploymentSlot, '') }}:
+        Write-Host "🌐 Slot URL: https://${{ parameters.appServiceName }}-${{ parameters.deploymentSlot }}.azurewebsites.net"
+        ${{ end }}
+      } else {
+        Write-Host "❌ Deployment failed"
+        exit 1
+      }

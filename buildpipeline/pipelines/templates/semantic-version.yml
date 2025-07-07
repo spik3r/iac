@@ -1,0 +1,110 @@
+# Template for generating semantic versions
+parameters:
+- name: versionType
+  type: string
+  default: 'semantic'  # 'semantic', 'pr', 'manual'
+  values:
+  - semantic
+  - pr
+  - manual
+- name: manualVersion
+  type: string
+  default: ''
+- name: createGitTag
+  type: boolean
+  default: true
+
+steps:
+- task: PowerShell@2
+  displayName: 'Generate Version (${{ parameters.versionType }})'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $versionType = "${{ parameters.versionType }}"
+      $manualVersion = "${{ parameters.manualVersion }}"
+      $createGitTag = [System.Convert]::ToBoolean("${{ parameters.createGitTag }}")
+      
+      Write-Host "Version type: $versionType"
+      
+      switch ($versionType) {
+        "semantic" {
+          # Get the latest tag
+          $latestTag = git describe --tags --abbrev=0 2>$null
+          if (-not $latestTag) {
+            $latestTag = "v0.0.0"
+          }
+          
+          # Parse version numbers
+          $version = $latestTag -replace '^v', ''
+          $versionParts = $version.Split('.')
+          $major = [int]$versionParts[0]
+          $minor = [int]$versionParts[1]
+          $patch = [int]$versionParts[2]
+          
+          # Check if this is a manual version bump (tag on current commit)
+          $currentCommitTags = git tag --points-at HEAD
+          if ($currentCommitTags) {
+            $newVersion = $currentCommitTags | Select-Object -First 1
+          } else {
+            # Auto-increment patch version
+            $patch++
+            $newVersion = "v$major.$minor.$patch"
+          }
+          
+          $shortVersion = $newVersion -replace '^v', ''
+        }
+        
+        "pr" {
+          # Generate PR-specific version
+          $prNumber = "$(System.PullRequest.PullRequestNumber)"
+          $shortCommit = "$(Build.SourceVersion)".Substring(0, 7)
+          $newVersion = "pr-$prNumber-$shortCommit"
+          $shortVersion = $newVersion
+        }
+        
+        "manual" {
+          if ([string]::IsNullOrEmpty($manualVersion)) {
+            Write-Host "##vso[task.logissue type=error]Manual version must be specified when versionType is 'manual'"
+            exit 1
+          }
+          $newVersion = $manualVersion
+          $shortVersion = $newVersion -replace '^v', ''
+        }
+        
+        default {
+          Write-Host "##vso[task.logissue type=error]Invalid version type: $versionType"
+          exit 1
+        }
+      }
+      
+      # Set pipeline variables
+      Write-Host "##vso[task.setvariable variable=semanticVersion;isOutput=true]$newVersion"
+      Write-Host "##vso[task.setvariable variable=shortVersion;isOutput=true]$shortVersion"
+      Write-Host "##vso[task.setvariable variable=imageTag;isOutput=true]$newVersion"
+      
+      Write-Host "Generated version: $newVersion"
+      Write-Host "Short version: $shortVersion"
+
+- ${{ if and(eq(parameters.versionType, 'semantic'), eq(parameters.createGitTag, true)) }}:
+  - task: PowerShell@2
+    displayName: 'Create Git Tag'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    inputs:
+      targetType: 'inline'
+      script: |
+        # Get the version from previous step
+        $version = "$(semanticVersion)"
+        
+        # Configure git
+        git config user.email "devops@vibes.com"
+        git config user.name "Azure DevOps"
+        
+        # Create and push tag if it doesn't exist
+        $existingTag = git tag -l "$version"
+        if (-not $existingTag) {
+          git tag "$version"
+          git push origin "$version"
+          Write-Host "Created and pushed tag: $version"
+        } else {
+          Write-Host "Tag $version already exists"
+        }
