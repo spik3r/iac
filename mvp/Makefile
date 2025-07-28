@@ -21,18 +21,30 @@ init:
 
 # Plan infrastructure changes
 plan:
-	terraform plan -var-file="terraform.tfvars"
+	@if [ -f "secrets.tfvars" ]; then \
+		terraform plan -var-file="terraform.tfvars" -var-file="secrets.tfvars"; \
+	else \
+		terraform plan -var-file="terraform.tfvars"; \
+	fi
 
 # Apply infrastructure changes
 apply:
-	terraform apply -var-file="terraform.tfvars"
+	@if [ -f "secrets.tfvars" ]; then \
+		terraform apply -var-file="terraform.tfvars" -var-file="secrets.tfvars"; \
+	else \
+		terraform apply -var-file="terraform.tfvars"; \
+	fi
 
 # Destroy infrastructure
 destroy:
 	@echo "⚠️  WARNING: This will destroy ALL resources!"
 	@echo "Are you sure? Press Ctrl+C to cancel, or Enter to continue..."
 	@read
-	terraform destroy -var-file="terraform.tfvars"
+	@if [ -f "secrets.tfvars" ]; then \
+		terraform destroy -var-file="terraform.tfvars" -var-file="secrets.tfvars"; \
+	else \
+		terraform destroy -var-file="terraform.tfvars"; \
+	fi
 
 # Show outputs
 outputs:

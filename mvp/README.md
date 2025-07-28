@@ -37,11 +37,23 @@ make init
 ```
 
 ### **4. Review and Customize Configuration**
-Edit `terraform.tfvars` to customize:
-- Environment name
-- Resource names
-- Location
-- SKU sizes
+```bash
+# Copy the example files and customize them
+cp terraform.tfvars.example terraform.tfvars
+cp secrets.tfvars.example secrets.tfvars  # Optional, for sensitive values
+
+# Edit terraform.tfvars to customize:
+# - Environment name
+# - Resource names  
+# - Location
+# - SKU sizes
+
+# Edit secrets.tfvars for sensitive values (optional):
+# - Service principal credentials
+# - Database connection strings
+# - API keys and secrets
+# - Alert email addresses
+```
 
 ### **5. Plan the Deployment**
 ```bash
@@ -73,6 +85,14 @@ Main configuration file with all customizable values:
 - Environment settings
 - Resource names and locations
 - SKU sizes and configurations
+
+### **secrets.tfvars** (Optional)
+Sensitive configuration values:
+- Service principal credentials
+- Database connection strings
+- API keys and secrets
+- Alert email addresses
+- **⚠️ NEVER commit this file to version control!**
 
 ### **variables.tf**
 Variable definitions with defaults and validation rules.
@@ -162,11 +182,21 @@ Ensure your Azure account has:
 - Contributor role on the subscription
 - Ability to create resource groups
 
+### **Authentication Options**
+1. **Azure CLI** (recommended): `az login`
+2. **Service Principal**: Use `secrets.tfvars` with client credentials
+3. **Managed Identity**: For running in Azure environments
+
 ### **Resource Name Conflicts**
 If resources already exist, modify the `name_prefix` in `terraform.tfvars`.
 
 ### **State File Issues**
 The state file (`terraform.tfstate`) is stored locally. Don't delete it unless you want to lose track of your resources.
+
+### **Secrets Management**
+- `secrets.tfvars` is automatically ignored by git
+- Use Azure Key Vault for production secrets
+- Never commit sensitive values to version control
 
 ## 📁 **File Structure**
 ```

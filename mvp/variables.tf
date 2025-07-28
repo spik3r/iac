@@ -78,3 +78,66 @@ variable "additional_app_settings" {
   type        = map(string)
   default     = {}
 }
+
+# Optional secrets (can be provided via secrets.tfvars)
+variable "client_id" {
+  description = "Azure Service Principal Client ID (optional)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "client_secret" {
+  description = "Azure Service Principal Client Secret (optional)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "tenant_id" {
+  description = "Azure Tenant ID (optional)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "subscription_id" {
+  description = "Azure Subscription ID (optional)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "docker_registry_username" {
+  description = "Docker registry username (optional, for external registries)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "docker_registry_password" {
+  description = "Docker registry password (optional, for external registries)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "alert_email_addresses" {
+  description = "List of email addresses for alerts (optional)"
+  type        = list(string)
+  default     = []
+}
+
+variable "database_connection_string" {
+  description = "Database connection string (optional)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "api_keys" {
+  description = "Map of API keys and secrets (optional)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}

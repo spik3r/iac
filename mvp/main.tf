@@ -10,6 +10,12 @@ terraform {
 
 provider "azurerm" {
   features {}
+  
+  # Optional: Use service principal if provided in secrets.tfvars
+  client_id       = var.client_id
+  client_secret   = var.client_secret
+  tenant_id       = var.tenant_id
+  subscription_id = var.subscription_id
 }
 
 # Data source for current Azure client configuration
@@ -78,12 +84,23 @@ module "app_service" {
   subnet_id = var.enable_vnet_integration ? module.networking.app_subnet_id : null
   enable_vnet_integration = var.enable_vnet_integration
   
-  # App settings including Application Insights
-  app_settings = merge(var.additional_app_settings, {
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = module.application_insights.connection_string
-    "ApplicationInsights__ConnectionString" = module.application_insights.connection_string
-    "APPINSIGHTS_INSTRUMENTATIONKEY" = module.application_insights.instrumentation_key
-  })
+  # Container registry credentials (if using external registry)
+  docker_registry_username = var.docker_registry_username
+  docker_registry_password = var.docker_registry_password
+  
+  # App settings including Application Insights and secrets
+  app_settings = merge(
+    var.additional_app_settings,
+    var.api_keys,
+    {
+      "APPLICATIONINSIGHTS_CONNECTION_STRING" = module.application_insights.connection_string
+      "ApplicationInsights__ConnectionString" = module.application_insights.connection_string
+      "APPINSIGHTS_INSTRUMENTATIONKEY" = module.application_insights.instrumentation_key
+    },
+    var.database_connection_string != null ? {
+      "ConnectionStrings__DefaultConnection" = var.database_connection_string
+    } : {}
+  )
   
   tags = local.common_tags
 }
