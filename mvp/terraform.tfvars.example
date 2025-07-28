@@ -1,0 +1,26 @@
+# Environment Configuration
+environment    = "dev"
+project_name   = "vibes"
+location      = "Australia East"
+name_prefix   = "vibes-dev"
+
+# Resource Group
+resource_group_name = "vibes-dev-rg"
+
+# Networking
+vnet_address_space     = ["10.0.0.0/16"]
+enable_vnet_integration = true
+
+# Container Registry
+container_registry_sku = "Basic"
+
+# App Service
+app_service_plan_sku = "B1"
+docker_image_name    = "vibes-app"
+docker_image_tag     = "latest"
+
+# Additional App Settings (optional)
+additional_app_settings = {
+  "ASPNETCORE_ENVIRONMENT" = "Development"
+  "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
+}
