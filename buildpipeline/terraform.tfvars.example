@@ -1,30 +1,24 @@
 # Project Configuration
 project_name = "vibes"
-location     = "East US"
+location     = "Australia East"
 
 # Admin Subscription (iac-admin) - where ACR and build pipelines live
 admin_subscription_id   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 admin_subscription_name = "iac-admin"
-admin_service_principal_id  = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-admin_service_principal_key = "your-admin-service-principal-key"
 
-# Target Subscription - where dev/uat/prod environments live
-target_subscription_id   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# Target Subscription - where dev/uat/prod environments live  
+target_subscription_id   = "f9dc50e2-b88a-4c20-b3ad-0c6add93a139"  # Your current dev subscription
 target_subscription_name = "your-target-subscription-name"
-target_service_principal_id  = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-target_service_principal_key = "your-target-service-principal-key"
 
 # Azure AD Tenant
 tenant_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
 # Azure DevOps Configuration
-azuredevops_org_service_url       = "https://dev.azure.com/your-org"
-azuredevops_personal_access_token = "your-azure-devops-pat"
+azuredevops_org_service_url = "https://dev.azure.com/your-org-name"
 
 # GitHub Configuration
-use_github_repo                = true
-github_repo_name              = "your-org/your-repo"
-github_personal_access_token  = "your-github-pat"
+use_github_repo = true
+github_repo_name = "spik3r/iac"
 
 # Container Registry Configuration
 admin_acr_sku = "Standard"
