@@ -58,15 +58,14 @@ resource "azuredevops_serviceendpoint_azurerm" "dev" {
   azurerm_subscription_name = var.subscription_name
 }
 
-# Create GitHub Service Connection (if using external Git)
+# Create GitHub Service Connection
 resource "azuredevops_serviceendpoint_github" "main" {
-  count                 = var.git_repository_url != "" ? 1 : 0
   project_id            = azuredevops_project.main.id
   service_endpoint_name = "${var.project_name}-github-connection"
   description          = "GitHub service connection for ${var.project_name}"
   
   auth_personal {
-    personal_access_token = var.git_personal_access_token
+    personal_access_token = var.github_personal_access_token
   }
 }
 
@@ -146,10 +145,11 @@ resource "azuredevops_build_definition" "build_deploy" {
   }
 
   repository {
-    repo_type   = "TfsGit"
-    repo_id     = azuredevops_project.main.id
-    branch_name = "refs/heads/main"
-    yml_path    = "azure-pipelines.yml"
+    repo_type               = "GitHub"
+    repo_id                 = var.git_repository_url
+    branch_name            = "refs/heads/main"
+    yml_path               = "azure-pipelines.yml"
+    service_connection_id  = azuredevops_serviceendpoint_github.main.id
   }
 
   variable_groups = [
@@ -168,9 +168,9 @@ resource "azuredevops_pipeline_authorization" "azure_connection" {
 }
 
 resource "azuredevops_pipeline_authorization" "github_connection" {
-  count       = var.create_pipelines && var.git_repository_url != "" ? 1 : 0
+  count       = var.create_pipelines ? 1 : 0
   project_id  = azuredevops_project.main.id
-  resource_id = azuredevops_serviceendpoint_github.main[0].id
+  resource_id = azuredevops_serviceendpoint_github.main.id
   type        = "endpoint"
   pipeline_id = azuredevops_build_definition.build_deploy[0].id
 }

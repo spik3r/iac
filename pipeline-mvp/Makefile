@@ -1,136 +1,126 @@
-# Pipeline MVP Infrastructure Makefile
+# Pipeline MVP Terraform Commands
+# Simplified Azure DevOps CI/CD setup for single environment
 
-.PHONY: help init plan apply destroy clean outputs setup-files
+.PHONY: help setup-files init plan apply destroy fmt validate clean
 
 # Default target
 help:
-	@echo "Pipeline MVP Infrastructure Commands:"
-	@echo "  setup-files - Copy example files to get started"
-	@echo "  init        - Initialize Terraform"
-	@echo "  plan        - Plan infrastructure changes"
-	@echo "  apply       - Apply infrastructure changes"
-	@echo "  destroy     - Destroy all infrastructure"
-	@echo "  outputs     - Show Terraform outputs"
-	@echo "  clean       - Clean Terraform files"
+	@echo "Pipeline MVP Terraform Commands:"
 	@echo ""
-	@echo "Quick start:"
-	@echo "  make setup-files"
-	@echo "  # Edit terraform.tfvars and secrets.tfvars"
-	@echo "  make init && make plan && make apply"
+	@echo "Setup Commands:"
+	@echo "  make setup-files    - Copy example files to working files"
+	@echo "  make init          - Initialize Terraform"
 	@echo ""
-	@echo "See README.md for detailed instructions"
+	@echo "Planning Commands:"
+	@echo "  make plan          - Plan infrastructure changes"
+	@echo "  make plan-destroy  - Plan infrastructure destruction"
+	@echo ""
+	@echo "Apply Commands:"
+	@echo "  make apply         - Apply infrastructure changes"
+	@echo "  make destroy       - Destroy infrastructure (with confirmation)"
+	@echo ""
+	@echo "Maintenance Commands:"
+	@echo "  make fmt           - Format Terraform files"
+	@echo "  make validate      - Validate Terraform configuration"
+	@echo "  make clean         - Clean Terraform cache and state"
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  1. Edit terraform.tfvars with your configuration"
+	@echo "  2. Edit secrets.tfvars with your sensitive values"
+	@echo "  3. Ensure you have Azure CLI logged in"
+	@echo "  4. Create service principal: az ad sp create-for-rbac --name 'vibes-pipeline-sp' --role 'Contributor'"
 
-# Copy example files
+# Setup working files from examples
 setup-files:
-	@if [ ! -f "terraform.tfvars" ]; then \
+	@echo "Setting up configuration files..."
+	@if [ ! -f terraform.tfvars ]; then \
 		cp terraform.tfvars.example terraform.tfvars; \
-		echo "✅ Created terraform.tfvars from example"; \
+		echo "✓ Created terraform.tfvars from example"; \
 	else \
-		echo "⚠️  terraform.tfvars already exists"; \
+		echo "✓ terraform.tfvars already exists"; \
 	fi
-	@if [ ! -f "secrets.tfvars" ]; then \
+	@if [ ! -f secrets.tfvars ]; then \
 		cp secrets.tfvars.example secrets.tfvars; \
-		echo "✅ Created secrets.tfvars from example"; \
+		echo "✓ Created secrets.tfvars from example"; \
 	else \
-		echo "⚠️  secrets.tfvars already exists"; \
+		echo "✓ secrets.tfvars already exists"; \
 	fi
 	@echo ""
-	@echo "📝 Next steps:"
-	@echo "1. Edit terraform.tfvars with your Azure DevOps org and subscription details"
-	@echo "2. Edit secrets.tfvars with your service principal and PAT credentials"
-	@echo "3. Run: make init && make plan && make apply"
+	@echo "⚠️  IMPORTANT: Edit terraform.tfvars and secrets.tfvars with your values before running 'make init'"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Edit terraform.tfvars with your Azure DevOps org and GitHub repo"
+	@echo "  2. Edit secrets.tfvars with your service principal and PAT tokens"
+	@echo "  3. Run 'make init' to initialize Terraform"
 
 # Initialize Terraform
 init:
+	@echo "Initializing Terraform..."
 	terraform init
+	@echo "✓ Terraform initialized"
 
 # Plan infrastructure changes
 plan:
-	@if [ ! -f "terraform.tfvars" ]; then \
-		echo "❌ terraform.tfvars not found. Run 'make setup-files' first"; \
-		exit 1; \
-	fi
-	@if [ ! -f "secrets.tfvars" ]; then \
-		echo "❌ secrets.tfvars not found. Run 'make setup-files' first"; \
-		exit 1; \
-	fi
+	@echo "Planning infrastructure changes..."
 	terraform plan -var-file="terraform.tfvars" -var-file="secrets.tfvars"
+
+# Plan infrastructure destruction
+plan-destroy:
+	@echo "Planning infrastructure destruction..."
+	terraform plan -destroy -var-file="terraform.tfvars" -var-file="secrets.tfvars"
 
 # Apply infrastructure changes
 apply:
-	@if [ ! -f "terraform.tfvars" ]; then \
-		echo "❌ terraform.tfvars not found. Run 'make setup-files' first"; \
-		exit 1; \
-	fi
-	@if [ ! -f "secrets.tfvars" ]; then \
-		echo "❌ secrets.tfvars not found. Run 'make setup-files' first"; \
-		exit 1; \
-	fi
+	@echo "Applying infrastructure changes..."
 	terraform apply -var-file="terraform.tfvars" -var-file="secrets.tfvars"
 
-# Destroy infrastructure
+# Destroy infrastructure with confirmation
 destroy:
-	@echo "⚠️  WARNING: This will destroy the Azure DevOps project and all pipelines!"
-	@echo "Are you sure? Press Ctrl+C to cancel, or Enter to continue..."
-	@read
-	@if [ -f "terraform.tfvars" ] && [ -f "secrets.tfvars" ]; then \
+	@echo "⚠️  WARNING: This will destroy all pipeline infrastructure!"
+	@echo "This includes:"
+	@echo "  - Azure DevOps project and pipelines"
+	@echo "  - Service connections"
+	@echo "  - Variable groups"
+	@echo ""
+	@read -p "Are you sure you want to continue? (yes/no): " confirm; \
+	if [ "$$confirm" = "yes" ]; then \
 		terraform destroy -var-file="terraform.tfvars" -var-file="secrets.tfvars"; \
 	else \
-		echo "❌ Configuration files not found"; \
-		exit 1; \
+		echo "Destruction cancelled."; \
 	fi
-
-# Show outputs
-outputs:
-	terraform output
-
-# Clean Terraform files (keeps state)
-clean:
-	rm -rf .terraform/
-	rm -f .terraform.lock.hcl
-	rm -f *.tfplan
-
-# Validate configuration
-validate:
-	terraform validate
 
 # Format Terraform files
 fmt:
+	@echo "Formatting Terraform files..."
 	terraform fmt -recursive
+	@echo "✓ Terraform files formatted"
 
-# Get Azure DevOps project URL
-devops-url:
-	@terraform output -raw devops_project_url 2>/dev/null || echo "Run 'make apply' first"
+# Validate Terraform configuration
+validate:
+	@echo "Validating Terraform configuration..."
+	terraform validate
+	@echo "✓ Terraform configuration is valid"
 
-# Get build pipeline URL
-pipeline-url:
-	@terraform output -raw build_pipeline_url 2>/dev/null || echo "Run 'make apply' first"
+# Clean Terraform cache and state
+clean:
+	@echo "Cleaning Terraform cache..."
+	rm -rf .terraform
+	rm -f .terraform.lock.hcl
+	@echo "✓ Terraform cache cleaned"
+	@echo ""
+	@echo "⚠️  Note: This does not remove terraform.tfstate files"
+	@echo "   Run 'terraform state list' to check if state exists"
 
-# Show setup status
-status:
-	@echo "Setup Status:"
-	@echo "============="
-	@if [ -f "terraform.tfvars" ]; then \
-		echo "✅ terraform.tfvars exists"; \
-	else \
-		echo "❌ terraform.tfvars missing - run 'make setup-files'"; \
-	fi
-	@if [ -f "secrets.tfvars" ]; then \
-		echo "✅ secrets.tfvars exists"; \
-	else \
-		echo "❌ secrets.tfvars missing - run 'make setup-files'"; \
-	fi
-	@if [ -f ".terraform.lock.hcl" ]; then \
-		echo "✅ Terraform initialized"; \
-	else \
-		echo "❌ Terraform not initialized - run 'make init'"; \
-	fi
-	@if [ -f "terraform.tfstate" ]; then \
-		echo "✅ Infrastructure deployed"; \
-		echo ""; \
-		echo "🔗 Quick Links:"; \
-		make devops-url 2>/dev/null | sed 's/^/   DevOps Project: /' || true; \
-		make pipeline-url 2>/dev/null | sed 's/^/   Build Pipeline: /' || true; \
-	else \
-		echo "❌ Infrastructure not deployed - run 'make apply'"; \
-	fi
+# Quick validation of all files
+check: fmt validate
+	@echo "✓ All checks passed"
+
+# Show current Terraform state
+state:
+	@echo "Current Terraform state:"
+	terraform state list
+
+# Show Terraform outputs
+output:
+	@echo "Terraform outputs:"
+	terraform output

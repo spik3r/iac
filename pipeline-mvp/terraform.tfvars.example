@@ -10,14 +10,9 @@ tenant_id        = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 # Azure DevOps Configuration
 azuredevops_org_service_url = "https://dev.azure.com/your-org-name"
 
-# Git Repository Configuration
-# Option 1: Azure Repos (created in the project)
-git_repository_url = "https://dev.azure.com/your-org-name/vibes/_git/vibes"
-git_username       = "your-email@domain.com"
-
-# Option 2: External Git (GitHub, GitLab, etc.)
-# git_repository_url = "https://github.com/spik3r/iac.git"
-# git_username       = "spik3r"
+# GitHub Repository Configuration
+git_repository_url = "https://github.com/your-username/your-repo"
+github_username    = "your-github-username"
 
 # Docker Configuration
 docker_image_name = "vibes-app"

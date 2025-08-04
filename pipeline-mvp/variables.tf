@@ -53,21 +53,19 @@ variable "azuredevops_personal_access_token" {
 
 # Git Repository Configuration
 variable "git_repository_url" {
-  description = "Git repository URL (Azure Repos or external)"
+  description = "Git repository URL (GitHub format: https://github.com/username/repo)"
   type        = string
 }
 
-variable "git_username" {
-  description = "Git username for authentication"
+variable "github_username" {
+  description = "GitHub username"
   type        = string
-  default     = ""
 }
 
-variable "git_personal_access_token" {
-  description = "Git personal access token"
+variable "github_personal_access_token" {
+  description = "GitHub personal access token with repo permissions"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
 # Docker Configuration

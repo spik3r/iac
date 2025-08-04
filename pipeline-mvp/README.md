@@ -43,6 +43,12 @@ az ad sp create-for-rbac --name "vibes-pipeline-sp" --role "Contributor" --scope
    - Service Connections (Read, query, & manage)
    - Variable Groups (Read, create, & manage)
 
+#### **Get GitHub PAT**
+1. Go to **GitHub** → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+2. Create token with these scopes:
+   - `repo` (Full repository access)
+   - `admin:repo_hook` (if using webhooks)
+
 ### **Step 2: Configure and Deploy**
 
 ```bash
@@ -60,23 +66,25 @@ make plan
 make apply
 ```
 
-### **Step 3: Set Up Your Code Repository**
+### **Step 3: Set Up Your GitHub Repository**
 
-#### **Option A: Use Azure Repos (Recommended for MVP)**
-1. After deployment, go to your Azure DevOps project
-2. Go to **Repos** → **Files**
-3. Push your code to the Azure Repo:
-
+1. **Push your code to GitHub** (if not already there):
 ```bash
-# Add Azure DevOps remote
-git remote add azure https://dev.azure.com/your-org/vibes/_git/vibes
-
-# Push your code
-git push azure main
+# If you haven't already, create a GitHub repo and push your code
+git remote add origin https://github.com/your-username/your-repo.git
+git push -u origin main
 ```
 
-#### **Option B: Use External Git (GitHub, etc.)**
-Update `terraform.tfvars` with your external repository URL and credentials.
+2. **Update terraform.tfvars** with your GitHub repository:
+```hcl
+git_repository_url = "https://github.com/your-username/your-repo"
+github_username    = "your-github-username"
+```
+
+3. **Update secrets.tfvars** with your GitHub PAT:
+```hcl
+github_personal_access_token = "your-github-pat"
+```
 
 ### **Step 4: Copy Pipeline File**
 
@@ -111,6 +119,8 @@ pipeline-mvp/
 project_name = "vibes"
 subscription_id = "f9dc50e2-b88a-4c20-b3ad-0c6add93a139"
 azuredevops_org_service_url = "https://dev.azure.com/your-org"
+git_repository_url = "https://github.com/your-username/your-repo"
+github_username = "your-github-username"
 dev_resource_group_name = "vibes-dev-rg"
 dev_container_registry_name = "vibesacrdev"
 dev_app_service_name = "vibes-dev-app"
@@ -122,6 +132,7 @@ service_principal_id = "your-sp-app-id"
 service_principal_key = "your-sp-password"
 tenant_id = "your-tenant-id"
 azuredevops_personal_access_token = "your-devops-pat"
+github_personal_access_token = "your-github-pat"
 ```
 
 ## 🔄 **Pipeline Workflow**
